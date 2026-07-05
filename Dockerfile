@@ -24,7 +24,7 @@ RUN cargo build --release
 # mcp_store.db leaves the Rust generator with an empty semantic_endpoints
 # table (vectors are computed here, not by mcpify itself — see the plan's
 # embeddings decision), so it must be populated before the image is usable.
-RUN ./target/release/populate-embeddings
+RUN ./target/release/jira-dc-mcp-populate-embeddings
 
 # `fastembed`/`ort` (Story R6) may dynamically link an ONNX Runtime shared
 # library rather than statically linking it — if `cargo build --release`
