@@ -19,6 +19,9 @@ target/
 # macOS
 .DS_Store
 
-# Runtime/generated data
-*.db
+# Runtime/generated data — NOT the versioned mcp_store*.db files, which
+# are committed build assets the Dockerfile and store.rs depend on.
+*.db-wal
+*.db-shm
+*.db-journal
 .fastembed_cache/
