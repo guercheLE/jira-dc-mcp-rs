@@ -1,0 +1,81 @@
+{
+  "schema_version": 1,
+  "language": "rust",
+  "display_name": "Jira Software Data Center REST API Reference",
+  "project_name": "jira-dc-mcp",
+  "default_version": "11.3",
+  "versions": {
+    "11.3": {
+      "db_file": "mcp_store.db",
+      "schemas_file": "src/validation/generated_schemas.json.zst",
+      "source": "https://dac-static.atlassian.com/server/jira/platform/jira_software_dc_11003_swagger.v3.json",
+      "added_at": 1783254002
+    },
+    "11.2": {
+      "db_file": "mcp_store_v11.2.db",
+      "schemas_file": "src/validation/generated_schemas_v11.2.json.zst",
+      "source": "https://dac-static.atlassian.com/server/jira/platform/jira_software_dc_11002_swagger.v3.json",
+      "added_at": 1783254016
+    },
+    "11.1": {
+      "db_file": "mcp_store_v11.1.db",
+      "schemas_file": "src/validation/generated_schemas_v11.1.json.zst",
+      "source": "https://dac-static.atlassian.com/server/jira/platform/jira_software_dc_11001_swagger.v3.json",
+      "added_at": 1783254022
+    },
+    "11.0": {
+      "db_file": "mcp_store_v11.0.db",
+      "schemas_file": "src/validation/generated_schemas_v11.0.json.zst",
+      "source": "https://dac-static.atlassian.com/server/jira/platform/jira_software_dc_11000_swagger.v3.json",
+      "added_at": 1783254026
+    },
+    "10.7": {
+      "db_file": "mcp_store_v10.7.db",
+      "schemas_file": "src/validation/generated_schemas_v10.7.json.zst",
+      "source": "https://dac-static.atlassian.com/server/jira/platform/jira_software_dc_10007_swagger.v3.json",
+      "added_at": 1783254031
+    },
+    "10.6": {
+      "db_file": "mcp_store_v10.6.db",
+      "schemas_file": "src/validation/generated_schemas_v10.6.json.zst",
+      "source": "https://dac-static.atlassian.com/server/jira/platform/jira_software_dc_10006_swagger.v3.json",
+      "added_at": 1783254035
+    },
+    "10.5": {
+      "db_file": "mcp_store_v10.5.db",
+      "schemas_file": "src/validation/generated_schemas_v10.5.json.zst",
+      "source": "https://dac-static.atlassian.com/server/jira/platform/jira_software_dc_10005_swagger.v3.json",
+      "added_at": 1783254040
+    },
+    "10.4": {
+      "db_file": "mcp_store_v10.4.db",
+      "schemas_file": "src/validation/generated_schemas_v10.4.json.zst",
+      "source": "https://dac-static.atlassian.com/server/jira/platform/jira_software_dc_10004_swagger.v3.json",
+      "added_at": 1783254044
+    },
+    "10.3": {
+      "db_file": "mcp_store_v10.3.db",
+      "schemas_file": "src/validation/generated_schemas_v10.3.json.zst",
+      "source": "https://dac-static.atlassian.com/server/jira/platform/jira_software_dc_10003_swagger.v3.json",
+      "added_at": 1783254048
+    },
+    "10.2": {
+      "db_file": "mcp_store_v10.2.db",
+      "schemas_file": "src/validation/generated_schemas_v10.2.json.zst",
+      "source": "https://dac-static.atlassian.com/server/jira/platform/jira_software_dc_10002_swagger.v3.json",
+      "added_at": 1783254052
+    },
+    "10.1": {
+      "db_file": "mcp_store_v10.1.db",
+      "schemas_file": "src/validation/generated_schemas_v10.1.json.zst",
+      "source": "https://dac-static.atlassian.com/server/jira/platform/jira_software_dc_10001_swagger.v3.json",
+      "added_at": 1783254056
+    },
+    "10.0": {
+      "db_file": "mcp_store_v10.0.db",
+      "schemas_file": "src/validation/generated_schemas_v10.0.json.zst",
+      "source": "https://dac-static.atlassian.com/server/jira/platform/jira_software_dc_10000_swagger.v3.json",
+      "added_at": 1783254060
+    }
+  }
+}

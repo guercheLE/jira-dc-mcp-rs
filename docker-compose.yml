@@ -1,0 +1,23 @@
+services:
+  jira-dc-mcp:
+    build: .
+    image: jira-dc-mcp:latest
+    env_file:
+      - .env
+    volumes:
+      - ~/.jira-dc-mcp:/root/.jira-dc-mcp
+    stdin_open: true
+    tty: true
+
+  jira-dc-mcp-http:
+    build: .
+    image: jira-dc-mcp:latest
+    env_file:
+      - .env
+    environment:
+      JIRA_DC_MCP_TRANSPORT: http
+      JIRA_DC_MCP_PORT: "3000"
+    ports:
+      - "3000:3000"
+    volumes:
+      - ~/.jira-dc-mcp:/root/.jira-dc-mcp
