@@ -36,10 +36,14 @@ pub fn resolve_log_level() -> String {
 /// process startup.
 pub fn init_logging(otel_layer: Option<BoxedLayer>) {
     let filter = EnvFilter::try_new(resolve_log_level()).unwrap_or_else(|_| EnvFilter::new("info"));
+    // `.with_writer(std::io::stderr)`: the MCP stdio transport (see
+    // `mcp_server::connect_stdio`) speaks JSON-RPC over stdout -- any other
+    // writer sharing that stream (tracing's default) corrupts every frame
+    // parsed on the client side. Logs always go to stderr instead.
     let fmt_layer: BoxedLayer = if use_pretty_output() {
-        fmt::layer().pretty().boxed()
+        fmt::layer().pretty().with_writer(std::io::stderr).boxed()
     } else {
-        fmt::layer().json().boxed()
+        fmt::layer().json().with_writer(std::io::stderr).boxed()
     };
 
     // `fmt_layer`/`otel_layer` are boxed as `Layer<Registry>` specifically,

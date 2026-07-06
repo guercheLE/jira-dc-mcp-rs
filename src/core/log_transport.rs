@@ -4,7 +4,9 @@ use std::io::IsTerminal;
 
 /// Pretty-printed to an interactive TTY, structured JSON otherwise
 /// (containers/CI) — mirrors `targets::typescript`'s `log-transport.ts`
-/// TTY-detection logic.
+/// TTY-detection logic. Checks stderr, not stdout: that's where logs are
+/// actually written (see `logger::init_logging`), since stdout is reserved
+/// for the MCP stdio transport's JSON-RPC frames.
 pub fn use_pretty_output() -> bool {
-    std::io::stdout().is_terminal()
+    std::io::stderr().is_terminal()
 }
