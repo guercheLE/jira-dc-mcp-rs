@@ -43,12 +43,34 @@ const VERSION_STORE_FILES: &[(&str, &str)] = &[
 /// project-root `mcp_store.db` this target has always used; every other
 /// version lives in its own `mcp_store_v<label>.db` sibling, added by a
 /// later `mcpify add-version` call.
+///
+/// Prefers a file by that name in the current working directory (the
+/// historical in-repo dev workflow); if it isn't there, falls back to the
+/// directory containing the running executable, so an installed binary
+/// invoked from an arbitrary cwd still finds its bundled `.db` files —
+/// mirroring `config_manager::load_config`'s install-dir fallback.
 pub fn resolve_store_path(api_version: &str) -> Result<PathBuf> {
-    VERSION_STORE_FILES
+    let file = VERSION_STORE_FILES
         .iter()
         .find(|(label, _)| *label == api_version)
-        .map(|(_, file)| PathBuf::from(file))
-        .with_context(|| format!("unknown api_version '{api_version}' — run the 'versions' command to see what's available"))
+        .map(|(_, file)| *file)
+        .with_context(|| format!("unknown api_version '{api_version}' — run the 'versions' command to see what's available"))?;
+
+    if Path::new(file).exists() {
+        return Ok(PathBuf::from(file));
+    }
+
+    if let Some(dir) = std::env::current_exe()
+        .ok()
+        .and_then(|exe| exe.parent().map(Path::to_path_buf))
+    {
+        let candidate = dir.join(file);
+        if candidate.exists() {
+            return Ok(candidate);
+        }
+    }
+
+    Ok(PathBuf::from(file))
 }
 
 const ENDPOINT_COLUMNS: &str = "operation_id, path, method, summary, description, input_schema, output_schema, auth_scheme_ref";
