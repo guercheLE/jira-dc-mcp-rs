@@ -68,12 +68,6 @@ async fn prompt_api_version() -> anyhow::Result<String> {
         "11.0",
         "10.7",
         "10.6",
-        "10.5",
-        "10.4",
-        "10.3",
-        "10.2",
-        "10.1",
-        "10.0",
     ];
     let selection = tokio::task::spawn_blocking(move || {
         inquire::Select::new("API version to use:", choices).prompt()
@@ -87,12 +81,6 @@ async fn prompt_api_version() -> anyhow::Result<String> {
         "11.0" => "11.0".to_string(),
         "10.7" => "10.7".to_string(),
         "10.6" => "10.6".to_string(),
-        "10.5" => "10.5".to_string(),
-        "10.4" => "10.4".to_string(),
-        "10.3" => "10.3".to_string(),
-        "10.2" => "10.2".to_string(),
-        "10.1" => "10.1".to_string(),
-        "10.0" => "10.0".to_string(),
         other => other.to_string(),
     })
 }

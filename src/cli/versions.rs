@@ -37,30 +37,6 @@ const KNOWN_VERSIONS: &[VersionRow] = &[
         label: "10.6",
         is_default: false,
     },
-    VersionRow {
-        label: "10.5",
-        is_default: false,
-    },
-    VersionRow {
-        label: "10.4",
-        is_default: false,
-    },
-    VersionRow {
-        label: "10.3",
-        is_default: false,
-    },
-    VersionRow {
-        label: "10.2",
-        is_default: false,
-    },
-    VersionRow {
-        label: "10.1",
-        is_default: false,
-    },
-    VersionRow {
-        label: "10.0",
-        is_default: false,
-    },
 ];
 // mcpify:versions:end
 

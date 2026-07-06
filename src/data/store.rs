@@ -29,12 +29,6 @@ pub const VERSION_STORE_FILES: &[(&str, &str)] = &[
     ("11.0", "mcp_store_v11.0.db"),
     ("10.7", "mcp_store_v10.7.db"),
     ("10.6", "mcp_store_v10.6.db"),
-    ("10.5", "mcp_store_v10.5.db"),
-    ("10.4", "mcp_store_v10.4.db"),
-    ("10.3", "mcp_store_v10.3.db"),
-    ("10.2", "mcp_store_v10.2.db"),
-    ("10.1", "mcp_store_v10.1.db"),
-    ("10.0", "mcp_store_v10.0.db"),
 ];
 
 const VERSION_STORE_BYTES: &[(&str, &[u8])] = &[
@@ -44,12 +38,6 @@ const VERSION_STORE_BYTES: &[(&str, &[u8])] = &[
     ("11.0", include_bytes!("../../mcp_store_v11.0.db")),
     ("10.7", include_bytes!("../../mcp_store_v10.7.db")),
     ("10.6", include_bytes!("../../mcp_store_v10.6.db")),
-    ("10.5", include_bytes!("../../mcp_store_v10.5.db")),
-    ("10.4", include_bytes!("../../mcp_store_v10.4.db")),
-    ("10.3", include_bytes!("../../mcp_store_v10.3.db")),
-    ("10.2", include_bytes!("../../mcp_store_v10.2.db")),
-    ("10.1", include_bytes!("../../mcp_store_v10.1.db")),
-    ("10.0", include_bytes!("../../mcp_store_v10.0.db")),
 ];
 // mcpify:versions:end
 
