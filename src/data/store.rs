@@ -22,7 +22,7 @@ use serde::Serialize;
 static REGISTER_VEC_EXTENSION: Once = Once::new();
 
 // mcpify:versions:begin
-const VERSION_STORE_FILES: &[(&str, &str)] = &[
+pub const VERSION_STORE_FILES: &[(&str, &str)] = &[
     ("11.3", "mcp_store.db"),
     ("11.2", "mcp_store_v11.2.db"),
     ("11.1", "mcp_store_v11.1.db"),
@@ -62,10 +62,11 @@ const VERSION_STORE_BYTES: &[(&str, &[u8])] = &[
 /// `cargo install`. The one difference from a schema lookup: SQLite
 /// needs a real file to open a `Connection` against (unlike a `&[u8]`
 /// JSON schema, read directly from memory), so this extracts the
-/// embedded bytes to the OS temp dir once and reuses that path on every
-/// subsequent call — the embedded bytes for a given `api_version` never
-/// change within a single compiled binary, so the file only ever needs
-/// writing once.
+/// embedded bytes to a fixed path in the OS temp dir on every call —
+/// cheap, since it only runs once per process start, and it means a
+/// rebuilt binary with different embedded bytes (a `populate_embeddings`
+/// re-run, an `add-version` update) can never be shadowed by a stale
+/// leftover from a previous install at that same path.
 pub fn resolve_store_path(api_version: &str) -> Result<PathBuf> {
     let file = VERSION_STORE_FILES
         .iter()
@@ -84,14 +85,18 @@ pub fn resolve_store_path(api_version: &str) -> Result<PathBuf> {
         .with_context(|| format!("failed to create temp dir '{}'", dir.display()))?;
 
     let path = dir.join(file);
-    if !path.exists() {
-        std::fs::write(&path, bytes).with_context(|| {
-            format!(
-                "failed to extract embedded store data to '{}'",
-                path.display()
-            )
-        })?;
-    }
+    // Always (re)writes rather than skipping when the path already
+    // exists: the extraction path doesn't vary by build, so a stale copy
+    // from a previous install (older embedded bytes, e.g. before a
+    // `populate_embeddings` re-run or an `add-version` update) would
+    // otherwise linger forever, silently serving outdated data. The
+    // write is cheap — this runs once per process start, not per query.
+    std::fs::write(&path, bytes).with_context(|| {
+        format!(
+            "failed to extract embedded store data to '{}'",
+            path.display()
+        )
+    })?;
 
     Ok(path)
 }
@@ -275,6 +280,20 @@ pub fn search_endpoints(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Guards against `VERSION_STORE_FILES` and `VERSION_STORE_BYTES`
+    /// silently drifting apart — every `api_version` this crate lists must
+    /// resolve to embedded bytes, or `resolve_store_path` fails at runtime
+    /// for exactly that version and nothing else, which is easy to miss in
+    /// review since the two arrays are edited in different places.
+    #[test]
+    fn every_version_store_file_has_embedded_bytes() {
+        let file_labels: std::collections::HashSet<_> =
+            VERSION_STORE_FILES.iter().map(|(label, _)| *label).collect();
+        let byte_labels: std::collections::HashSet<_> =
+            VERSION_STORE_BYTES.iter().map(|(label, _)| *label).collect();
+        assert_eq!(file_labels, byte_labels);
+    }
 
     /// Builds a read-write connection with the same schema mcpify's shared
     /// pipeline writes, and seeds it with one row — real usage never
