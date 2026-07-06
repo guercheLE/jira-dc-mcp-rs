@@ -164,6 +164,15 @@ async fn run_harness_server() -> anyhow::Result<()> {
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    // Must run before anything builds a TLS client (our own reqwest client,
+    // or opentelemetry-otlp's HTTP exporter): rustls 0.23 requires a
+    // process-wide default crypto provider, and nothing installs one
+    // automatically once more than one provider feature is in the
+    // dependency tree.
+    rustls::crypto::aws_lc_rs::default_provider()
+        .install_default()
+        .expect("failed to install rustls crypto provider");
+
     #[cfg(feature = "profiling")]
     let _dhat_profiler = dhat::Profiler::new_heap();
 
