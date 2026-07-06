@@ -41,8 +41,22 @@ async fn prompt_base_url() -> anyhow::Result<String> {
 }
 
 async fn prompt_auth_method() -> anyhow::Result<AuthMethod> {
-    // Exactly one scheme was discovered — nothing to choose between.
-    Ok(AuthMethod::Basic)
+    // The OpenAPI spec only documents Basic auth, but Data Center deployments
+    // also accept a Personal Access Token bearer — offer both.
+    let choices = vec![
+        "Personal Access Token (recommended)",
+        "Basic (username + password or app token)",
+    ];
+    let selection = tokio::task::spawn_blocking(move || {
+        inquire::Select::new("Which auth method should this deployment use?", choices).prompt()
+    })
+    .await??;
+
+    Ok(if selection.starts_with("Personal Access Token") {
+        AuthMethod::Pat
+    } else {
+        AuthMethod::Basic
+    })
 }
 
 // mcpify:versions:begin
@@ -112,7 +126,17 @@ async fn prompt_credentials(auth_method: AuthMethod) -> anyhow::Result<HashMap<S
                 );
                 credentials.insert(
                     "password".to_string(),
-                    inquire::Password::new("Password:")
+                    inquire::Password::new(
+                        "Password (or app/access token, if your account uses one):",
+                    )
+                    .without_confirmation()
+                    .prompt()?,
+                );
+            }
+            AuthMethod::Pat => {
+                credentials.insert(
+                    "token".to_string(),
+                    inquire::Password::new("Personal Access Token:")
                         .without_confirmation()
                         .prompt()?,
                 );

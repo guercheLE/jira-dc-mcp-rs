@@ -7,6 +7,7 @@ use super::auth_strategy::{AuthConfig, AuthStrategy, Credentials};
 use super::errors::AuthError;
 use super::request_credentials::RequestCredentials;
 use super::strategies::basic::BasicAuthStrategy;
+use super::strategies::pat::PatAuthStrategy;
 use super::strategies::stub::StubAuthStrategy;
 
 const CREDENTIAL_ACCOUNT: &str = "active-credentials";
@@ -14,6 +15,7 @@ const CREDENTIAL_ACCOUNT: &str = "active-credentials";
 fn strategy_for(auth_method: AuthMethod) -> Box<dyn AuthStrategy> {
     match auth_method {
         AuthMethod::Basic => Box::new(BasicAuthStrategy),
+        AuthMethod::Pat => Box::new(PatAuthStrategy),
         #[allow(unreachable_patterns)]
         _ => Box::new(StubAuthStrategy),
     }
@@ -25,6 +27,7 @@ fn strategy_for(auth_method: AuthMethod) -> Box<dyn AuthStrategy> {
 pub fn header_location_for(auth_method: AuthMethod) -> (&'static str, &'static str) {
     match auth_method {
         AuthMethod::Basic => ("header", "Authorization"),
+        AuthMethod::Pat => ("header", "Authorization"),
     }
 }
 
