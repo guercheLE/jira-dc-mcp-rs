@@ -54,59 +54,24 @@ const VERSION_STORE_BYTES: &[(&str, &[u8])] = &[
 // mcpify:versions:end
 
 /// Resolves the active `api_version` (from the config cascade) to its
-/// store file — the default version's data always lives in the
-/// project-root `mcp_store.db` this target has always used; every other
-/// version lives in its own `mcp_store_v<label>.db` sibling, added by a
-/// later `mcpify add-version` call.
-///
-/// Prefers a file by that name in the current working directory (the
-/// historical in-repo dev workflow); if it isn't there, falls back to the
-/// directory containing the running executable (covers a binary
-/// deliberately deployed next to a copy of the `.db` files, e.g. in a
-/// container image); if that's not it either, falls back to the project
-/// checkout this binary was built from. That last one is the fallback
-/// that actually matters for `cargo install --path .`: cargo only ever
-/// copies the compiled binary into `~/.cargo/bin`, never the `.db` files
-/// sitting next to it in the checkout, so an installed binary invoked
-/// from an arbitrary cwd would otherwise never find them.
-/// `CARGO_MANIFEST_DIR` is resolved by `env!` at compile time, so it
-/// bakes in the absolute path of whatever checkout built this binary.
+/// store file. Every `.db` this crate supports is embedded into the
+/// compiled binary via `include_bytes!` (`VERSION_STORE_BYTES`) exactly
+/// like `validator.rs` embeds each version's schema — there is no
+/// filesystem fallback chain to reason about, and this crate never
+/// depends on any particular `.db` file existing anywhere on disk after
+/// `cargo install`. The one difference from a schema lookup: SQLite
+/// needs a real file to open a `Connection` against (unlike a `&[u8]`
+/// JSON schema, read directly from memory), so this extracts the
+/// embedded bytes to the OS temp dir once and reuses that path on every
+/// subsequent call — the embedded bytes for a given `api_version` never
+/// change within a single compiled binary, so the file only ever needs
+/// writing once.
 pub fn resolve_store_path(api_version: &str) -> Result<PathBuf> {
     let file = VERSION_STORE_FILES
         .iter()
         .find(|(label, _)| *label == api_version)
         .map(|(_, file)| *file)
         .with_context(|| format!("unknown api_version '{api_version}' — run the 'versions' command to see what's available"))?;
-
-    if Path::new(file).exists() {
-        return Ok(PathBuf::from(file));
-    }
-
-    if let Some(dir) = std::env::current_exe()
-        .ok()
-        .and_then(|exe| exe.parent().map(Path::to_path_buf))
-    {
-        let candidate = dir.join(file);
-        if candidate.exists() {
-            return Ok(candidate);
-        }
-    }
-
-    let manifest_candidate = Path::new(env!("CARGO_MANIFEST_DIR")).join(file);
-    if manifest_candidate.exists() {
-        return Ok(manifest_candidate);
-    }
-
-    extract_embedded_store(api_version, file)
-}
-
-/// Last-resort fallback for `resolve_store_path`: writes this version's
-/// embedded bytes out to the OS temp dir and returns that path, so
-/// `open_store` still has a real file to open. Skips the write if a
-/// previous call (in this process or an earlier run) already extracted
-/// it — the embedded bytes for a given `api_version` never change within
-/// a single compiled binary, so the file only needs writing once.
-fn extract_embedded_store(api_version: &str, file: &str) -> Result<PathBuf> {
     let bytes = VERSION_STORE_BYTES
         .iter()
         .find(|(label, _)| *label == api_version)
