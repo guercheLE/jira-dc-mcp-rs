@@ -30,6 +30,9 @@ impl AuthStrategy for PatAuthStrategy {
 
     fn validate_credentials(&self, credentials: &Credentials) -> bool {
         credentials.contains_key("authorization_header")
+            || credentials
+                .get("token")
+                .is_some_and(|token| !token.is_empty())
     }
 }
 

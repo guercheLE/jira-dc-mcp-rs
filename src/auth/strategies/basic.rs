@@ -30,6 +30,12 @@ impl AuthStrategy for BasicAuthStrategy {
 
     fn validate_credentials(&self, credentials: &Credentials) -> bool {
         credentials.contains_key("authorization_header")
+            || (credentials
+                .get("username")
+                .is_some_and(|username| !username.is_empty())
+                && credentials
+                    .get("password")
+                    .is_some_and(|password| !password.is_empty()))
     }
 }
 

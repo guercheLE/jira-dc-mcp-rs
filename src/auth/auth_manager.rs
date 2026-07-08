@@ -68,23 +68,49 @@ impl AuthManager {
         if let Some(cached) = &self.cached_credentials
             && self.strategy.validate_credentials(cached)
         {
-            return Ok(cached.clone());
+            return self.normalize_credentials(cached).await;
         }
 
         if let Some(stored) = load_credential(CREDENTIAL_ACCOUNT)? {
             let parsed: Credentials = serde_json::from_str(&stored)?;
             if self.strategy.validate_credentials(&parsed) {
-                self.cached_credentials = Some(parsed.clone());
-                return Ok(parsed);
+                let normalized = self.normalize_credentials(&parsed).await?;
+                self.cached_credentials = Some(normalized.clone());
+                save_credential(CREDENTIAL_ACCOUNT, &serde_json::to_string(&normalized)?)?;
+                return Ok(normalized);
             }
             if let Ok(refreshed) = self.strategy.refresh_token(&parsed).await {
-                self.cached_credentials = Some(refreshed.clone());
-                save_credential(CREDENTIAL_ACCOUNT, &serde_json::to_string(&refreshed)?)?;
-                return Ok(refreshed);
+                let normalized = self.normalize_credentials(&refreshed).await?;
+                self.cached_credentials = Some(normalized.clone());
+                save_credential(CREDENTIAL_ACCOUNT, &serde_json::to_string(&normalized)?)?;
+                return Ok(normalized);
             }
         }
 
         Err(AuthError::NoActiveCredentials(format!("{:?}", self.auth_method)).into())
+    }
+
+    async fn normalize_credentials(
+        &self,
+        credentials: &Credentials,
+    ) -> anyhow::Result<Credentials> {
+        if credentials.contains_key("authorization_header")
+            || credentials.contains_key("api_key")
+            || credentials.contains_key("request_header_name")
+        {
+            return Ok(credentials.clone());
+        }
+
+        if let Some(access_token) = credentials.get("access_token") {
+            let mut normalized = credentials.clone();
+            normalized.insert(
+                "authorization_header".to_string(),
+                format!("Bearer {access_token}"),
+            );
+            return Ok(normalized);
+        }
+
+        self.strategy.authenticate(credentials).await
     }
 
     /// Decorates outgoing request headers with credentials for `transport`:

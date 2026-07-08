@@ -25,9 +25,12 @@ pub async fn run() -> anyhow::Result<()> {
     }
 
     match request.send().await {
-        Ok(_) => {
+        Ok(response) if response.status().is_success() => {
             println!("connection OK");
             Ok(())
+        }
+        Ok(response) => {
+            anyhow::bail!("connection failed: HTTP {}", response.status());
         }
         Err(err) => {
             eprintln!("connection failed: {err}");
