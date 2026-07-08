@@ -25,8 +25,10 @@ Interactively collects the API URL and the credentials your chosen auth method n
 ```bash
 jira-dc-mcp search "create an issue"
 jira-dc-mcp get <operationId>
-jira-dc-mcp call <operationId> --some-arg value
+jira-dc-mcp call <operationId> --args '{"issueIdOrKey":"TP-1"}'
 ```
+
+`call`'s arguments are a single `--args`/`-a` flag holding a JSON object (default `{}`), validated against the operation's input schema before the request is sent — not arbitrary `--flag value` pairs.
 
 ### Harness Server
 
@@ -34,6 +36,73 @@ jira-dc-mcp call <operationId> --some-arg value
 jira-dc-mcp start                              # stdio transport (default)
 jira-dc-mcp http --host 127.0.0.1 --port 3000  # HTTP transport
 ```
+
+## Observability & Resilience
+
+### Structured logging
+
+JSON logs go to stderr (pretty-printed instead when stderr is an interactive TTY, e.g. a dev shell — stdout is reserved for the stdio transport's JSON-RPC frames). Level is controlled by `JIRA_DC_MCP_LOG_LEVEL` (or `log_level` in a config file), default `info`:
+
+```bash
+JIRA_DC_MCP_LOG_LEVEL=debug jira-dc-mcp start
+```
+
+Secret redaction is *not* automatic. `core::sanitizer::sanitize` masks JSON object keys containing `password`, `token`, `secret`, `authorization`, `apikey`/`api_key`/`api-key`, or `credential`, but it's a utility call sites must invoke explicitly before logging a payload — there's no global hook that redacts everything logged.
+
+### OpenTelemetry tracing
+
+Spans are exported over OTLP/HTTP under the hardcoded service name `jira-dc-mcp` (`core::otel::build_layer`). There's no project-specific env var for the collector endpoint — it uses the OTel SDK's own standard variables, e.g.:
+
+```bash
+OTEL_EXPORTER_OTLP_ENDPOINT=https://otel-collector.internal:4318 \
+OTEL_EXPORTER_OTLP_HEADERS="Authorization=Bearer xyz" \
+jira-dc-mcp start
+```
+
+(defaults to `http://localhost:4318`, with `/v1/traces` appended). If building the exporter fails, tracing export is silently skipped and the process still starts with plain logging — nothing blocks startup.
+
+### Metrics
+
+Metrics are *not* pushed through the OpenTelemetry SDK despite it being in the dependency tree for tracing — there's a separate, hand-rolled Prometheus-text counter registry (`http::metrics`) exposed at `GET /metrics`, and only under HTTP transport (`jira-dc-mcp http`); stdio transport has no metrics endpoint. Exactly one counter exists today, `http_requests_total`, incremented on every request that reaches the auth-gate middleware (including requests to `/metrics` itself):
+
+```bash
+curl http://127.0.0.1:3000/metrics
+# http_requests_total 42
+```
+
+### Circuit breaker, retries, and rate limiting
+
+Outbound calls to the target Jira API run through a CLOSED→OPEN→HALF_OPEN circuit breaker (`core::circuit_breaker`) with a **hardcoded** 5-consecutive-failure threshold and 30s reset timeout (`CircuitBreaker::default()`) — there is no env var, config key, or CLI flag for these; changing them means editing `src/services/api_client.rs`.
+
+Retries and rate limiting *are* configurable, via env var or a config file:
+
+| Setting | Env var | Default | Notes |
+|---|---|---|---|
+| Retry attempts | `JIRA_DC_MCP_RETRY_ATTEMPTS` | `3` | Only retries transport-level failures (connection errors, timeouts) — a non-2xx HTTP response returns immediately as an error and is not retried. |
+| Request timeout | `JIRA_DC_MCP_TIMEOUT_MS` | `30000` | Per HTTP request to the target API. |
+| Rate limit | `JIRA_DC_MCP_RATE_LIMIT` | `100` | Calls per 1-second sliding window; the window size itself is hardcoded. Throttles this server's *outbound* calls to Jira, not incoming MCP requests. |
+
+```bash
+JIRA_DC_MCP_RETRY_ATTEMPTS=5 JIRA_DC_MCP_TIMEOUT_MS=10000 JIRA_DC_MCP_RATE_LIMIT=20 jira-dc-mcp start
+```
+
+These settings can also be set in a config file (`./jira-dc-mcp.config.yml`, `~/.jira-dc-mcp/config.yml`, or `/etc/jira-dc-mcp/config.yml`) under the same lowercase keys (`retry_attempts`, `timeout_ms`, `rate_limit`). There is no CLI flag for them today — every subcommand calls the config loader with an empty CLI-flags layer, so despite the loader's documented "CLI flags win over env/file" precedence, only env vars and config files actually reach it in this build.
+
+### Health checks
+
+`jira-dc-mcp http` exposes `GET /healthz` — `200` with `{"status": "...", "components": N}` when healthy, `503` when unhealthy. Only one component is registered: the sqlite operation store (`mcp_store*.db`), so this reports whether the embedded database is openable, not whether the upstream Jira instance is reachable. The check loop runs on a **hardcoded** 30s interval with a 5s per-check timeout — not configurable.
+
+stdio transport has no `/healthz`; use `jira-dc-mcp test-connection` instead, which makes one live request against the configured API URL with the resolved auth headers.
+
+Docker's `HEALTHCHECK` (in the provided `Dockerfile`) does not call `/healthz` — it runs a separate `jira-dc-mcp-healthcheck` binary that only checks that `mcp_store.db` exists and is readable on disk, a shallower check than `/healthz`.
+
+### Credential storage
+
+`jira-dc-mcp setup` always stores whatever credentials you enter in the OS-native keychain (macOS Keychain / Windows Credential Manager / Linux Secret Service, via the `keyring` crate; service name `jira-dc-mcp`, account `active-credentials`) — unconditionally, in addition to whichever of the `.env`/`config.json`/CLI-invocation outputs you choose to also keep. If no platform keychain backend is available (e.g. no D-Bus secret-service daemon in a minimal container), it falls back to an AES-256-GCM-encrypted file at `~/.jira-dc-mcp/credentials.enc` (mode `0600`, containing directory `0700`). That fallback's encryption key is derived from `$HOME` plus the service name rather than a separate passphrase, so it isn't portable to another machine but also isn't protected against another process running as the same local user.
+
+At runtime, on stdio transport, `AuthManager::credentials()` reads back from this same keychain entry whenever nothing is already cached in memory. On HTTP transport, the keychain and local config are never consulted — every request must carry its own `Authorization` header, enforced by the auth-gate middleware.
+
+Note: `.env.example` lists `JIRA_DC_MCP_USERNAME`/`JIRA_DC_MCP_PASSWORD`, and `setup`'s ".env file" option writes them out, but no code path reads those specific env vars back at runtime — `config_manager`'s env-var layer only maps `url`, `auth_method`, `api_version`, `log_level`, `transport`, `host`, `cors_allow`, `rate_limit`, `timeout_ms`, `cache_size`, `retry_attempts`, and `port`. In practice, credentials only ever come from the OS keychain/encrypted-file fallback described above.
 
 ## Testing
 
@@ -55,6 +124,10 @@ cargo run --release --features profiling -- search "test query"   # heap profili
 ```
 
 `profile/bottleneck-report.md` combines coverage gaps with the hottest CPU functions in one small text file — paste it into an LLM (or hand it to another tool) to find and fix bottlenecks. Requires [samply](https://github.com/mstange/samply) (`cargo install samply`).
+
+## License
+
+MIT — see [LICENSE](LICENSE).
 
 ---
 
