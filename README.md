@@ -10,6 +10,8 @@ Exposes exactly 3 tools — `search`, `get`, `call` — backed by an embedded se
 cargo build --release
 ```
 
+Prebuilt binaries for macOS, Linux, and Windows are attached to each [GitHub Release](https://github.com/guercheLE/jira-dc-mcp-rs/releases), along with a shell/PowerShell installer script.
+
 ## Setup
 
 ```bash
