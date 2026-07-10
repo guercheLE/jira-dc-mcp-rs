@@ -276,10 +276,14 @@ mod tests {
     /// review since the two arrays are edited in different places.
     #[test]
     fn every_version_store_file_has_embedded_bytes() {
-        let file_labels: std::collections::HashSet<_> =
-            VERSION_STORE_FILES.iter().map(|(label, _)| *label).collect();
-        let byte_labels: std::collections::HashSet<_> =
-            VERSION_STORE_BYTES.iter().map(|(label, _)| *label).collect();
+        let file_labels: std::collections::HashSet<_> = VERSION_STORE_FILES
+            .iter()
+            .map(|(label, _)| *label)
+            .collect();
+        let byte_labels: std::collections::HashSet<_> = VERSION_STORE_BYTES
+            .iter()
+            .map(|(label, _)| *label)
+            .collect();
         assert_eq!(file_labels, byte_labels);
     }
 

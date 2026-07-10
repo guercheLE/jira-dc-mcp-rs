@@ -18,7 +18,14 @@ RUN apt-get update \
 COPY Cargo.toml Cargo.lock* ./
 COPY src ./src
 COPY mcp_store.db ./mcp_store.db
-
+# Every version's `.db`, not just the default `mcp_store.db` — `store.rs`'s
+# `VERSION_STORE_BYTES` embeds all of them via `include_bytes!`, so
+# `cargo build` fails below if any are missing from the build context.
+COPY mcp_store_v10.6.db ./mcp_store_v10.6.db
+COPY mcp_store_v10.7.db ./mcp_store_v10.7.db
+COPY mcp_store_v11.0.db ./mcp_store_v11.0.db
+COPY mcp_store_v11.1.db ./mcp_store_v11.1.db
+COPY mcp_store_v11.2.db ./mcp_store_v11.2.db
 RUN cargo build --release
 
 # mcp_store.db leaves the Rust generator with an empty semantic_endpoints
