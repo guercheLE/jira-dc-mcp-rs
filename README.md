@@ -25,12 +25,22 @@ Interactively collects the API URL and the credentials your chosen auth method n
 ### Terminal Client (default)
 
 ```bash
-jira-dc-mcp search "create an issue"
-jira-dc-mcp get <operationId>
-jira-dc-mcp call <operationId> --args '{"issueIdOrKey":"TP-1"}'
+# 1. Semantic search over all 435 operations in the default Jira store
+jira-dc-mcp search "get an issue with Agile fields"
+
+# 2. Inspect the exact method, path, and input/output schemas before calling
+jira-dc-mcp get getIssue
+# method: GET
+# path: /agile/1.0/issue/{issueIdOrKey}
+
+# 3. Path and query parameters are fields in one --args JSON object
+jira-dc-mcp call getIssue --args '{"issueIdOrKey":"TP-1","expand":"names,schema"}'
+
+# Request payloads are nested under body in that same object
+jira-dc-mcp call addComment --args '{"issueIdOrKey":"TP-1","body":{"body":"Investigating this now."}}'
 ```
 
-`call`'s arguments are a single `--args`/`-a` flag holding a JSON object (default `{}`), validated against the operation's input schema before the request is sent — not arbitrary `--flag value` pairs.
+`call` accepts one JSON object through `--args` (or `-a`), not arbitrary per-operation CLI flags. The object defaults to `{}` and is validated against the operation's input schema before the request is sent; use `get <operationId>` to see the accepted field names and which ones are required.
 
 ### Harness Server
 
