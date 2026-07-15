@@ -1,19 +1,17 @@
-name: Docker release
+name: Publish container image
 
-# Publishes the Dockerfile's image to GHCR, versioned by the release
-# tag — a real, pullable artifact of the release, not just the CI
-# build-validation docker-build.yml does on every push/PR. Uses the
-# built-in GITHUB_TOKEN, so no extra secret is needed.
 on:
   push:
     tags:
-      - "v*"
+      - "v*.*.*"
+
+permissions:
+  contents: read
+  packages: write
 
 jobs:
-  docker:
-    runs-on: ubuntu-latest
-    permissions:
-      packages: write
+  publish:
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
       - uses: docker/setup-buildx-action@v4.2.0
@@ -24,8 +22,6 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Compute image name
         id: image
-        # GHCR image names must be lowercase, but github.repository isn't
-        # guaranteed to be (e.g. a mixed-case GitHub username/org).
         run: echo "name=ghcr.io/$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_OUTPUT"
       - uses: docker/build-push-action@v7.3.0
         with:

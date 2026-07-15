@@ -1,0 +1,32 @@
+language: rust
+output: .
+force: true
+publish_registry: true
+publication:
+  license: MIT
+  repository: https://github.com/guercheLE/jira-dc-mcp-rs
+  readme: README.md
+  authors: ["Luciano Evaristo Guerche (Gorše)"]
+  keywords: [mcp, jira, cli, api]
+  categories: [command-line-utilities, api-bindings]
+  exclude: [/.github, /.mcpify, /docs, /scripts, /openapi, /Dockerfile, /docker-compose.yml, /.dockerignore, /.env.example, /mcpify.yaml]
+auth:
+  - name: personalAccessToken
+    kind: pat
+versions:
+  - version: "11.3"
+    source: https://dac-static.atlassian.com/server/jira/platform/jira_software_dc_11003_swagger.v3.json
+    default: true
+  - version: "11.2"
+    source: https://dac-static.atlassian.com/server/jira/platform/jira_software_dc_11002_swagger.v3.json
+  - version: "11.1"
+    source: https://dac-static.atlassian.com/server/jira/platform/jira_software_dc_11001_swagger.v3.json
+  - version: "11.0"
+    source: https://dac-static.atlassian.com/server/jira/platform/jira_software_dc_11000_swagger.v3.json
+  - version: "10.7"
+    source: https://dac-static.atlassian.com/server/jira/platform/jira_software_dc_10007_swagger.v3.json
+  - version: "10.6"
+    source: https://dac-static.atlassian.com/server/jira/platform/jira_software_dc_10006_swagger.v3.json
+version_policy:
+  mode: all
+package_size_limit_mb: 100

@@ -17,6 +17,8 @@ use crate::core::config_schema::Config;
 use crate::core::rate_limiter::RateLimiter;
 use crate::data::store::EndpointRecord;
 
+const DEFAULT_USER_AGENT: &str = concat!("jira-dc-mcp/", env!("CARGO_PKG_VERSION"));
+
 fn parameters_of(endpoint: &EndpointRecord) -> Vec<Value> {
     endpoint
         .input_schema
@@ -127,6 +129,7 @@ impl ApiClient {
 
         let mut headers: HashMap<String, String> = HashMap::new();
         headers.insert("Content-Type".to_string(), "application/json".to_string());
+        headers.insert("User-Agent".to_string(), DEFAULT_USER_AGENT.to_string());
         for (name, value) in pick_by_location(endpoint, args_map, "header") {
             headers.insert(name, value);
         }

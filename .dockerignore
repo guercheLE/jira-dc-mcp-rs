@@ -1,0 +1,5 @@
+.git/
+.fastembed_cache/
+target/
+.env
+.DS_Store

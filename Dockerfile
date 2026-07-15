@@ -17,21 +17,13 @@ RUN apt-get update \
 
 COPY Cargo.toml Cargo.lock* ./
 COPY src ./src
-COPY mcp_store.db ./mcp_store.db
-# Every version's `.db`, not just the default `mcp_store.db` — `store.rs`'s
-# `VERSION_STORE_BYTES` embeds all of them via `include_bytes!`, so
-# `cargo build` fails below if any are missing from the build context.
-COPY mcp_store_v10.6.db ./mcp_store_v10.6.db
-COPY mcp_store_v10.7.db ./mcp_store_v10.7.db
-COPY mcp_store_v11.0.db ./mcp_store_v11.0.db
-COPY mcp_store_v11.1.db ./mcp_store_v11.1.db
-COPY mcp_store_v11.2.db ./mcp_store_v11.2.db
-RUN cargo build --release
+# Include every current and future API version store in the build context.
+COPY mcp_store*.db ./
 
-# mcp_store.db leaves the Rust generator with an empty semantic_endpoints
-# table (vectors are computed here, not by mcpify itself — see the plan's
-# embeddings decision), so it must be populated before the image is usable.
-RUN ./target/release/jira-dc-mcp-populate-embeddings
+# Populate every store before the final build so include_bytes! embeds vectors.
+RUN cargo build --locked --release --bin jira-dc-mcp-populate-embeddings
+RUN ./target/release/jira-dc-mcp-populate-embeddings --all
+RUN cargo build --locked --release
 
 # `fastembed`/`ort` (Story R6) may dynamically link an ONNX Runtime shared
 # library rather than statically linking it — if `cargo build --release`
@@ -48,7 +40,7 @@ RUN apt-get update \
 
 COPY --from=builder /app/target/release/jira-dc-mcp ./jira-dc-mcp
 COPY --from=builder /app/target/release/jira-dc-mcp-healthcheck ./jira-dc-mcp-healthcheck
-COPY --from=builder /app/mcp_store.db ./mcp_store.db
+COPY --from=builder /app/mcp_store*.db ./
 
 HEALTHCHECK --interval=30s --timeout=5s --retries=3 CMD ["./jira-dc-mcp-healthcheck"]
 

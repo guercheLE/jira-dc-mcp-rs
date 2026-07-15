@@ -6,6 +6,22 @@ description = "Jira Software Data Center REST API Reference MCP server, generate
 license = "MIT"
 repository = "https://github.com/guercheLE/jira-dc-mcp-rs"
 readme = "README.md"
+authors = ["Luciano Evaristo Guerche (Gorše)"]
+keywords = ["mcp", "jira", "cli", "api"]
+categories = ["command-line-utilities", "api-bindings"]
+publish = true
+exclude = [
+    "/.github",
+    "/.mcpify",
+    "/docs",
+    "/scripts",
+    "/openapi",
+    "/Dockerfile",
+    "/docker-compose.yml",
+    "/.dockerignore",
+    "/.env.example",
+    "/mcpify.yaml",
+]
 
 [lib]
 name = "jira_dc_mcp"
@@ -28,7 +44,7 @@ tokio = { version = "1", features = ["full"] }
 async-trait = "0.1"
 rmcp = { version = "2", features = ["server", "transport-io", "transport-streamable-http-server"] }
 axum = "0.8"
-reqwest = { version = "0.12", features = ["json", "rustls-tls"], default-features = false }
+reqwest = { version = "0.12", features = ["json", "rustls-tls", "rustls-tls-native-roots"], default-features = false }
 # Explicit rustls crypto provider: reqwest itself installs one lazily, but
 # opentelemetry-otlp's HTTP exporter pulls in its own reqwest (via a
 # different version) that doesn't, and panics at first use if nothing
