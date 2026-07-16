@@ -8,10 +8,18 @@ use crate::services::api_client::ApiClient;
 use crate::validation::validator::{validate_input, validate_output};
 
 /// Validates arguments against the input schema, injects the active auth
-/// strategy's credentials, executes the live HTTP request, and validates
-/// the response against the output schema before returning it — PRD
-/// §1.5's `call` pipeline (architecture.md's 4-step `call` pipeline),
-/// protecting the calling agent from upstream API drift.
+/// strategy's credentials, executes the live HTTP request, and checks the
+/// response against the output schema before returning it — PRD §1.5's
+/// `call` pipeline (architecture.md's 4-step `call` pipeline).
+///
+/// An output-schema mismatch is only logged, not raised: real-world OpenAPI
+/// specs (e.g. Atlassian's published Jira Data Center spec) are frequently
+/// wrong about response shape — declaring a single object where the API
+/// actually returns an array, or an overly narrow `additionalProperties`
+/// for a free-form bag of fields — and rejecting an otherwise-successful
+/// call over a documentation bug would deny the caller real data it
+/// already has in hand. Input validation still hard-fails: those arguments
+/// are under the caller's control, not the upstream API's.
 ///
 /// Takes an already-looked-up `EndpointRecord` rather than a `Connection`
 /// and an `operation_id` to look up itself: `rusqlite::Connection` isn't
@@ -35,6 +43,12 @@ pub async fn call_operation(
         .execute(endpoint, &args, auth_manager, request_override)
         .await?;
 
-    validate_output(&config.api_version, operation_id, &response)?;
+    if let Err(err) = validate_output(&config.api_version, operation_id, &response) {
+        tracing::warn!(
+            operation_id,
+            error = %err,
+            "response did not match the documented schema; returning it as-is"
+        );
+    }
     Ok(response)
 }

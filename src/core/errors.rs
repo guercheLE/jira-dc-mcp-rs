@@ -13,7 +13,7 @@ pub enum McpifyError {
     #[error("{0}")]
     Authentication(String),
 
-    #[error("{message}")]
+    #[error("{message}{}", format_validation_details(details))]
     Validation {
         message: String,
         details: Option<serde_json::Value>,
@@ -27,6 +27,26 @@ pub enum McpifyError {
 
     #[error("rate limit exceeded")]
     RateLimitExceeded,
+}
+
+/// Renders `Validation::details` (a JSON array of jsonschema/Ajv violation
+/// strings, or `None` when the schema itself is missing) as a `": a; b; c"`
+/// suffix, so `Display`/`to_string()` — what `run_tool` sends back as the
+/// MCP tool's error text — carries the actual violated constraints instead
+/// of just the generic "invalid input for 'X'" / "unexpected response
+/// shape for 'X'" message.
+fn format_validation_details(details: &Option<serde_json::Value>) -> String {
+    match details.as_ref().and_then(serde_json::Value::as_array) {
+        Some(errors) if !errors.is_empty() => {
+            let joined = errors
+                .iter()
+                .filter_map(serde_json::Value::as_str)
+                .collect::<Vec<_>>()
+                .join("; ");
+            format!(": {joined}")
+        }
+        _ => String::new(),
+    }
 }
 
 impl McpifyError {
@@ -70,5 +90,26 @@ mod tests {
             "CIRCUIT_BREAKER_OPEN"
         );
         assert_eq!(McpifyError::RateLimitExceeded.code(), "RATE_LIMIT_EXCEEDED");
+    }
+
+    #[test]
+    fn validation_display_appends_details_when_present() {
+        let err = McpifyError::Validation {
+            message: "unexpected response shape for 'getAllProjects'".into(),
+            details: Some(serde_json::json!(["\"foo\" is not of type \"object\""])),
+        };
+        assert_eq!(
+            err.to_string(),
+            "unexpected response shape for 'getAllProjects': \"foo\" is not of type \"object\""
+        );
+    }
+
+    #[test]
+    fn validation_display_omits_suffix_when_details_absent() {
+        let err = McpifyError::Validation {
+            message: "invalid input for 'getIssue'".into(),
+            details: None,
+        };
+        assert_eq!(err.to_string(), "invalid input for 'getIssue'");
     }
 }
