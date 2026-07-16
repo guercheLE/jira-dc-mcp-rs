@@ -93,11 +93,10 @@ fn populate_one(path: &Path) -> anyhow::Result<usize> {
         indexed += 1;
     }
 
-    let semantic_count: usize = conn.query_row(
-        "SELECT COUNT(*) FROM semantic_endpoints",
-        [],
-        |row| row.get(0),
-    )?;
+    let semantic_count: usize =
+        conn.query_row("SELECT COUNT(*) FROM semantic_endpoints", [], |row| {
+            row.get(0)
+        })?;
     if semantic_count != endpoints_count {
         anyhow::bail!(
             "completeness check failed for '{}': semantic_endpoints has {semantic_count} row(s) \
