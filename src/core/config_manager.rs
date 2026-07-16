@@ -11,12 +11,14 @@ const ENV_PREFIX: &str = "JIRA_DC_MCP";
 const CONFIG_DIR_NAME: &str = ".jira-dc-mcp";
 const LOCAL_CONFIG_FILE: &str = "jira-dc-mcp.config.yml";
 
-/// Env vars this crate reads directly (`HOME`) rather than via a `dirs`-style
-/// crate: keeps the dependency list matched to the toolchain table, at the
-/// cost of `~` resolution only working where `$HOME` is set (true for every
-/// deployment target this project's Dockerfile/docker-compose.yml target).
+/// Env vars this crate reads directly (`HOME`/`USERPROFILE`) rather than via
+/// a `dirs`-style crate: keeps the dependency list matched to the toolchain
+/// table. Tries `HOME` first (macOS/Linux/containers), then `USERPROFILE`
+/// (Windows, where `HOME` is not guaranteed to be set), then falls back to
+/// the current directory.
 fn home_dir() -> PathBuf {
     std::env::var_os("HOME")
+        .or_else(|| std::env::var_os("USERPROFILE"))
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from("."))
 }

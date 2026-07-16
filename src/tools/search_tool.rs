@@ -13,7 +13,31 @@ pub fn search_operations(
     query: &str,
     limit: usize,
 ) -> anyhow::Result<serde_json::Value> {
+    warn_if_embeddings_incomplete(conn);
     let query_embedding = embed(query)?;
     let results = search_endpoints(conn, &query_embedding, limit)?;
     Ok(serde_json::to_value(results)?)
+}
+
+/// Cheap diagnostic: if this store's `semantic_endpoints` row count is
+/// below its `endpoints` row count (e.g. `populate_embeddings` was never
+/// run, or a prior run failed partway before the completeness check was
+/// added), warn so the gap is visible in logs — without changing the
+/// success/`[]` return contract for legitimately-empty search results.
+fn warn_if_embeddings_incomplete(conn: &Connection) {
+    let counts: rusqlite::Result<(i64, i64)> = conn.query_row(
+        "SELECT (SELECT COUNT(*) FROM endpoints), (SELECT COUNT(*) FROM semantic_endpoints)",
+        [],
+        |row| Ok((row.get(0)?, row.get(1)?)),
+    );
+    if let Ok((endpoints_count, semantic_count)) = counts
+        && semantic_count < endpoints_count
+    {
+        tracing::warn!(
+            endpoints_count,
+            semantic_count,
+            "semantic_endpoints is missing embeddings for {} operation(s); run populate_embeddings to backfill",
+            endpoints_count - semantic_count
+        );
+    }
 }

@@ -71,6 +71,12 @@ impl AuthManager {
             return self.normalize_credentials(cached).await;
         }
 
+        if let Some(from_env) = self.credentials_from_env() {
+            let normalized = self.normalize_credentials(&from_env).await?;
+            self.cached_credentials = Some(normalized.clone());
+            return Ok(normalized);
+        }
+
         if let Some(stored) = load_credential(CREDENTIAL_ACCOUNT)? {
             let parsed: Credentials = serde_json::from_str(&stored)?;
             if self.strategy.validate_credentials(&parsed) {
@@ -88,6 +94,38 @@ impl AuthManager {
         }
 
         Err(AuthError::NoActiveCredentials(format!("{:?}", self.auth_method)).into())
+    }
+
+    /// Reads credentials directly from `JIRA_DC_MCP_TOKEN`/`_API_KEY` (PAT)
+    /// or `JIRA_DC_MCP_USERNAME`+`_PASSWORD` (Basic), keyed by the resolved
+    /// `auth_method` — these env vars are documented in `.env.example` but,
+    /// before this fix, were never actually read into the auth layer; only
+    /// a prior `setup` run (keychain/file) produced working credentials.
+    /// Returns `None` (falling through to `load_credential`) when the
+    /// relevant var(s) for this deployment's `auth_method` aren't set.
+    fn credentials_from_env(&self) -> Option<Credentials> {
+        match self.auth_method {
+            AuthMethod::Pat => {
+                let token = std::env::var("JIRA_DC_MCP_TOKEN")
+                    .or_else(|_| std::env::var("JIRA_DC_MCP_API_KEY"))
+                    .ok()?;
+                let mut credentials = Credentials::new();
+                credentials.insert("token".to_string(), token.clone());
+                credentials.insert(
+                    "authorization_header".to_string(),
+                    format!("Bearer {token}"),
+                );
+                Some(credentials)
+            }
+            AuthMethod::Basic => {
+                let username = std::env::var("JIRA_DC_MCP_USERNAME").ok()?;
+                let password = std::env::var("JIRA_DC_MCP_PASSWORD").ok()?;
+                let mut credentials = Credentials::new();
+                credentials.insert("username".to_string(), username);
+                credentials.insert("password".to_string(), password);
+                Some(credentials)
+            }
+        }
     }
 
     async fn normalize_credentials(
@@ -167,7 +205,11 @@ impl AuthManager {
         } else if let Some(header) = credentials.get("authorization_header") {
             headers.insert("Authorization".to_string(), header.clone());
         } else if let Some(api_key) = credentials.get("api_key") {
-            headers.insert("X-Api-Key".to_string(), api_key.clone());
+            let header_name = credentials
+                .get("request_header_name")
+                .cloned()
+                .unwrap_or_else(|| "X-Api-Key".to_string());
+            headers.insert(header_name, api_key.clone());
         }
         Ok(headers)
     }

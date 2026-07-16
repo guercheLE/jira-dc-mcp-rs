@@ -29,6 +29,14 @@ fn default_search_limit() -> usize {
     5
 }
 
+/// Every operation's generated input JSON Schema unconditionally declares
+/// `"type": "object"`, even for zero-param operations — a `null` value
+/// (the previous default) always fails that validation, so a missing
+/// `arguments` field must default to a real empty object instead.
+fn default_call_arguments() -> serde_json::Value {
+    serde_json::json!({})
+}
+
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct SearchArgs {
     /// Natural-language description of the operation you need
@@ -48,8 +56,10 @@ pub struct GetArgs {
 pub struct CallArgs {
     /// operationId returned by search
     pub operation_id: String,
-    /// Operation parameters and/or request body
-    #[serde(default)]
+    /// Operation parameters and/or request body. Defaults to `{}` (not
+    /// `null`) when omitted, since every operation's generated schema
+    /// requires an object.
+    #[serde(default = "default_call_arguments")]
     pub arguments: serde_json::Value,
 }
 

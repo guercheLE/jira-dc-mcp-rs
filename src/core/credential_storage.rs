@@ -11,11 +11,19 @@ use sha2::{Digest, Sha256};
 
 const SERVICE_NAME: &str = "jira-dc-mcp";
 
-fn config_dir() -> PathBuf {
-    let home = std::env::var_os("HOME")
+/// Resolves the current user's home directory, trying `HOME` first (set on
+/// macOS/Linux and in most containers), then `USERPROFILE` (the Windows
+/// equivalent — `HOME` is not guaranteed to be set there), then falling
+/// back to the current directory so callers always get a usable path.
+fn resolve_home_dir() -> PathBuf {
+    std::env::var_os("HOME")
+        .or_else(|| std::env::var_os("USERPROFILE"))
         .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from("."));
-    home.join(".jira-dc-mcp")
+        .unwrap_or_else(|| PathBuf::from("."))
+}
+
+fn config_dir() -> PathBuf {
+    resolve_home_dir().join(".jira-dc-mcp")
 }
 
 fn fallback_file() -> PathBuf {
@@ -29,9 +37,9 @@ fn fallback_file() -> PathBuf {
 /// equally-simple choice available in this crate's toolchain that also
 /// detects tampering, which CBC alone does not.
 fn encryption_key() -> [u8; 32] {
-    let home = std::env::var("HOME").unwrap_or_default();
+    let home = resolve_home_dir();
     let mut hasher = Sha256::new();
-    hasher.update(home.as_bytes());
+    hasher.update(home.to_string_lossy().as_bytes());
     hasher.update(SERVICE_NAME.as_bytes());
     hasher.finalize().into()
 }
@@ -138,7 +146,11 @@ pub fn save_credential(account: &str, value: &str) -> anyhow::Result<()> {
 pub fn load_credential(account: &str) -> anyhow::Result<Option<String>> {
     match Entry::new(SERVICE_NAME, account).and_then(|entry| entry.get_password()) {
         Ok(password) => Ok(Some(password)),
-        Err(keyring::Error::NoEntry) => Ok(None),
+        // Both "cleanly reports no entry" and "hard keychain error" fall
+        // back to the encrypted file: a credential saved via `save_to_file`
+        // (e.g. because the keychain was unavailable at save time) must
+        // stay reachable even once the keychain becomes available again
+        // but has no matching entry for `account`.
         Err(_) => load_from_file(account),
     }
 }

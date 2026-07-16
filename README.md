@@ -18,7 +18,9 @@ Prebuilt binaries for macOS, Linux, and Windows are attached to each [GitHub Rel
 cargo run -- setup
 ```
 
-Interactively collects the API URL and the credentials your chosen auth method needs, then lets you persist them as a `.env` file, a `config.json` file, or a ready-to-run CLI invocation.
+Interactively collects the API URL and the credentials your chosen auth method needs, then lets you persist the non-secret settings (url, auth method, api version, transport) as either a **global** config file (`~/.jira-dc-mcp/config.yml`) or a **local** config file (`./jira-dc-mcp.config.yml`) — both are read back automatically by every subsequent run (see `load_config`'s cascade) — or print a ready-to-run CLI invocation instead. Credentials are always saved separately via the OS keychain (falling back to an encrypted local file), never written to the config file.
+
+> **Base URL note:** this API's OpenAPI spec defines its `servers[].url` with a `/rest` path prefix. Set `JIRA_DC_MCP_URL` (or the `url` config field) to a value ending in `/rest`, e.g. `https://jira.example.com/rest` — otherwise requests will 404.
 
 ## Usage
 

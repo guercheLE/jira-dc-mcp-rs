@@ -13,6 +13,7 @@
 
 use std::path::{Path, PathBuf};
 
+use anyhow::Context;
 use jira_dc_mcp::data::store::{VERSION_STORE_FILES, open_store_read_write};
 use jira_dc_mcp::services::embedding_service::embed;
 
@@ -32,7 +33,12 @@ fn vector_to_le_bytes(vector: &[f32]) -> Vec<u8> {
 }
 
 /// Populates one store file's `semantic_endpoints` table in place,
-/// returning how many operations were (re)indexed.
+/// returning how many operations were (re)indexed. Fails loudly (rather
+/// than exiting success on a partially-populated store) if any row's
+/// embedding can't be computed/inserted, or if the resulting
+/// `semantic_endpoints` row count doesn't match `endpoints`'s — silently
+/// under-populating a store previously left it in a state where `search`
+/// would return incomplete/empty results without ever reporting an error.
 fn populate_one(path: &Path) -> anyhow::Result<usize> {
     let conn = open_store_read_write(path)?;
 
@@ -49,6 +55,7 @@ fn populate_one(path: &Path) -> anyhow::Result<usize> {
             })
         })?
         .collect::<Result<_, _>>()?;
+    let endpoints_count = rows.len();
 
     // sqlite-vec's vec0 virtual tables don't implement conflict resolution
     // (no ON CONFLICT / INSERT OR REPLACE support — a duplicate primary key
@@ -62,8 +69,9 @@ fn populate_one(path: &Path) -> anyhow::Result<usize> {
     // Sequential, not parallelized: keeps peak memory bounded regardless of
     // how many operations a spec declares, at the cost of total wall time —
     // an acceptable trade for a one-time setup script.
-    let count = rows.len();
+    let mut indexed = 0usize;
     for row in rows {
+        let operation_id = row.operation_id.clone();
         let text = [
             Some(row.method),
             Some(row.path),
@@ -74,34 +82,50 @@ fn populate_one(path: &Path) -> anyhow::Result<usize> {
         .flatten()
         .collect::<Vec<_>>()
         .join(" ");
-        let vector = embed(&text)?;
-        delete.execute(rusqlite::params![row.operation_id])?;
-        insert.execute(rusqlite::params![
-            row.operation_id,
-            vector_to_le_bytes(&vector)
-        ])?;
+        // Do not swallow per-row embedding failures: a row that can't be
+        // embedded must fail the whole run, not be silently skipped, or
+        // the store ends up "populated" with a smaller-than-expected
+        // `semantic_endpoints` count and no error to explain why.
+        let vector = embed(&text)
+            .with_context(|| format!("failed to compute embedding for '{operation_id}'"))?;
+        delete.execute(rusqlite::params![operation_id])?;
+        insert.execute(rusqlite::params![operation_id, vector_to_le_bytes(&vector)])?;
+        indexed += 1;
     }
 
-    Ok(count)
+    let semantic_count: usize = conn.query_row(
+        "SELECT COUNT(*) FROM semantic_endpoints",
+        [],
+        |row| row.get(0),
+    )?;
+    if semantic_count != endpoints_count {
+        anyhow::bail!(
+            "completeness check failed for '{}': semantic_endpoints has {semantic_count} row(s) \
+             but endpoints has {endpoints_count} — {indexed} row(s) were (re)indexed this run; \
+             re-run populate-embeddings for this store",
+            path.display()
+        );
+    }
+
+    Ok(indexed)
 }
 
-/// Which store file(s) to populate: bare invocation targets just
-/// `mcp_store.db` (the default version), matching every deployment that
-/// only ever ships that one file (this project's own Dockerfile
-/// included); an explicit path targets exactly that file; `--all` walks
-/// every version this project's ledger knows about
-/// (`VERSION_STORE_FILES`) — the one-time local backfill needed after
-/// `mcpify add-version` adds a new version file, since each version's
-/// `.db` gets its own independent `semantic_endpoints` table.
+/// Which store file(s) to populate: bare invocation now targets **every**
+/// version this project's ledger knows about (`VERSION_STORE_FILES`),
+/// matching the generated `Dockerfile`'s `--all` invocation — previously
+/// the bare form only populated `mcp_store.db` (the default version),
+/// silently leaving every other version's store at 0 rows unless `--all`
+/// was passed explicitly. An explicit path still targets exactly that one
+/// file for a fast, single-store re-run; `--all` remains available too
+/// (now equivalent to the bare form) for scripts that already pass it.
 fn targets() -> Vec<PathBuf> {
     let mut args = std::env::args().skip(1);
     match args.next().as_deref() {
-        Some("--all") => VERSION_STORE_FILES
+        Some("--all") | None => VERSION_STORE_FILES
             .iter()
             .map(|(_, file)| PathBuf::from(file))
             .collect(),
         Some(path) => vec![PathBuf::from(path)],
-        None => vec![PathBuf::from("mcp_store.db")],
     }
 }
 

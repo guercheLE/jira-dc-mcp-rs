@@ -135,10 +135,39 @@ async fn prompt_credentials(auth_method: AuthMethod) -> anyhow::Result<HashMap<S
     .await?
 }
 
-async fn prompt_persistence(env: &HashMap<String, String>) -> anyhow::Result<()> {
+/// Strips the `JIRA_DC_MCP_` env-var prefix and lowercases each key, turning
+/// the wizard's `env` map (`JIRA_DC_MCP_URL`, `JIRA_DC_MCP_AUTH_METHOD`, ...)
+/// into the flat, unprefixed key shape `config_manager::load_config` actually
+/// reads from a YAML config file (`url`, `auth_method`, ...) — writing the
+/// env-shaped keys there would be silently ignored by the loader.
+fn to_config_yaml(env: &HashMap<String, String>) -> anyhow::Result<String> {
+    let mut config = serde_json::Map::new();
+    for (key, value) in env {
+        let config_key = key
+            .strip_prefix("JIRA_DC_MCP_")
+            .unwrap_or(key)
+            .to_lowercase();
+        config.insert(config_key, serde_json::Value::String(value.clone()));
+    }
+    Ok(serde_yaml::to_string(&serde_json::Value::Object(config))?)
+}
+
+/// Persists the wizard's settings to a config file that
+/// `config_manager::load_config`'s cascade will actually read back on the
+/// next run — never to `.env`/`config.json`, which the runtime loader never
+/// consults. Offers a choice between the loader's local-cwd tier
+/// (`./jira-dc-mcp.config.yml`, checked first) and its home-dir tier
+/// (`~/.jira-dc-mcp/config.yml`, checked next), matching `load_config`'s
+/// cascade order and YAML format exactly (`src/core/config_manager.rs`).
+/// Credentials are never written here — they go through
+/// `save_credential`'s keychain/encrypted-file path instead.
+async fn prompt_persistence(
+    env: &HashMap<String, String>,
+    credential_env_keys: &std::collections::HashSet<String>,
+) -> anyhow::Result<()> {
     let choices = vec![
-        "Write a .env file",
-        "Write a config.json file",
+        "Write a global config file (~/.jira-dc-mcp/config.yml)",
+        "Write a local config file (./jira-dc-mcp.config.yml)",
         "Print a ready-to-run CLI invocation (nothing written to disk)",
     ];
     let selection = tokio::task::spawn_blocking(move || {
@@ -146,19 +175,32 @@ async fn prompt_persistence(env: &HashMap<String, String>) -> anyhow::Result<()>
     })
     .await??;
 
+    // Secrets never go into the config file — they're already persisted via
+    // `save_credential`'s keychain/encrypted-file path; only the
+    // non-secret settings (url, auth_method, api_version, transport, ...)
+    // belong in the YAML config.
+    let non_secret_env: HashMap<String, String> = env
+        .iter()
+        .filter(|(key, _)| !credential_env_keys.contains(*key))
+        .map(|(key, value)| (key.clone(), value.clone()))
+        .collect();
+
     match selection {
-        "Write a .env file" => {
-            let contents = env
-                .iter()
-                .map(|(key, value)| format!("{key}={value}"))
-                .collect::<Vec<_>>()
-                .join("\n");
-            std::fs::write(".env", format!("{contents}\n"))?;
-            println!("Wrote .env");
+        "Write a global config file (~/.jira-dc-mcp/config.yml)" => {
+            let home = std::env::var_os("HOME")
+                .or_else(|| std::env::var_os("USERPROFILE"))
+                .map(std::path::PathBuf::from)
+                .unwrap_or_else(|| std::path::PathBuf::from("."));
+            let dir = home.join(".jira-dc-mcp");
+            std::fs::create_dir_all(&dir)?;
+            let path = dir.join("config.yml");
+            std::fs::write(&path, to_config_yaml(&non_secret_env)?)?;
+            println!("Wrote {}", path.display());
         }
-        "Write a config.json file" => {
-            std::fs::write("config.json", serde_json::to_string_pretty(env)?)?;
-            println!("Wrote config.json");
+        "Write a local config file (./jira-dc-mcp.config.yml)" => {
+            let path = std::path::PathBuf::from("jira-dc-mcp.config.yml");
+            std::fs::write(&path, to_config_yaml(&non_secret_env)?)?;
+            println!("Wrote {}", path.display());
         }
         _ => {
             let flags = env
@@ -264,11 +306,15 @@ pub async fn run_setup_wizard() -> anyhow::Result<()> {
             .unwrap_or_default()
             .to_string(),
     );
+    let credential_env_keys: std::collections::HashSet<String> = credentials
+        .keys()
+        .map(|key| format!("JIRA_DC_MCP_{}", to_env_key(key)))
+        .collect();
     for (key, value) in &credentials {
         env.insert(format!("JIRA_DC_MCP_{}", to_env_key(key)), value.clone());
     }
 
-    prompt_persistence(&env).await?;
+    prompt_persistence(&env, &credential_env_keys).await?;
     print_mcp_client_config(transport, auth_method, &env);
 
     let run_command = match transport {
