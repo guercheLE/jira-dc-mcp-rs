@@ -11,6 +11,7 @@
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Mutex, Once, OnceLock};
 use std::time::Duration;
 
@@ -79,9 +80,32 @@ pub fn resolve_store_path(api_version: &str) -> Result<PathBuf> {
     // `populate_embeddings` re-run or an `add-version` update) would
     // otherwise linger forever, silently serving outdated data. The
     // write is cheap — this runs once per process start, not per query.
-    std::fs::write(&path, bytes).with_context(|| {
+    //
+    // Writes to a uniquely-named sibling file first, then `rename`s it
+    // into place, rather than writing `path` directly: `cached_store_connection`
+    // calls this on every tool invocation (not just once at startup), and
+    // tool calls run concurrently (each MCP request is its own tokio
+    // task) — a direct write would let one task's `open_store` observe
+    // another task's in-progress truncate, reading a momentarily-empty
+    // file and failing with "no such table: endpoints". `rename` within
+    // the same directory is atomic on both POSIX and Windows, so every
+    // reader sees either the complete previous copy or the complete new
+    // one, never a partial write.
+    static UNIQUE: AtomicU64 = AtomicU64::new(0);
+    let tmp_path = dir.join(format!(
+        "{file}.{}.{}.tmp",
+        std::process::id(),
+        UNIQUE.fetch_add(1, Ordering::Relaxed)
+    ));
+    std::fs::write(&tmp_path, bytes).with_context(|| {
         format!(
             "failed to extract embedded store data to '{}'",
+            tmp_path.display()
+        )
+    })?;
+    std::fs::rename(&tmp_path, &path).with_context(|| {
+        format!(
+            "failed to move extracted store data into place at '{}'",
             path.display()
         )
     })?;
@@ -285,6 +309,30 @@ mod tests {
             .map(|(label, _)| *label)
             .collect();
         assert_eq!(file_labels, byte_labels);
+    }
+
+    /// Regression test: `resolve_store_path` used to `std::fs::write` the
+    /// shared extraction path directly, which let one thread's `open_store`
+    /// race another thread's in-progress truncate — exactly what happens
+    /// when multiple MCP tool calls run concurrently against the same
+    /// `api_version` (each hits this path via `cached_store_connection`).
+    /// The rename-into-place fix must make every one of these opens see a
+    /// complete file rather than an intermittently empty one.
+    #[test]
+    fn resolve_store_path_survives_concurrent_calls() {
+        let api_version = VERSION_STORE_FILES[0].0.to_string();
+        let handles: Vec<_> = (0..16)
+            .map(|_| {
+                let api_version = api_version.clone();
+                std::thread::spawn(move || {
+                    let path = resolve_store_path(&api_version).unwrap();
+                    open_store(&path).unwrap();
+                })
+            })
+            .collect();
+        for handle in handles {
+            handle.join().unwrap();
+        }
     }
 
     /// Builds a read-write connection with the same schema mcpify's shared
