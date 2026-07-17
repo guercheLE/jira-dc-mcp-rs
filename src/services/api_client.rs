@@ -176,6 +176,14 @@ impl ApiClient {
             }
             if let Some(body) = body {
                 request = request.json(body);
+            } else if parsed_method != reqwest::Method::GET && parsed_method != reqwest::Method::HEAD {
+                // Some APIs 411 on a body-less PUT/POST/DELETE with no
+                // Content-Length header — reqwest/hyper treats a
+                // zero-length body the same as no body and still omits the
+                // header on its own, so it has to be set explicitly.
+                request = request
+                    .header(reqwest::header::CONTENT_LENGTH, "0")
+                    .body(Vec::new());
             }
 
             match request.send().await {

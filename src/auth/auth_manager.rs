@@ -85,8 +85,19 @@ impl AuthManager {
                 save_credential(CREDENTIAL_ACCOUNT, &serde_json::to_string(&normalized)?)?;
                 return Ok(normalized);
             }
-            if let Ok(refreshed) = self.strategy.refresh_token(&parsed).await {
-                let normalized = self.normalize_credentials(&refreshed).await?;
+            // A blob with a `refresh_token` has already completed the
+            // initial code exchange at some point (it just expired) — use
+            // the cheap refresh path. A blob with neither `access_token`
+            // nor `refresh_token` is straight out of the setup wizard
+            // (raw `authorization_code`, never exchanged yet), so fall
+            // through to the full exchange instead.
+            let exchanged = if parsed.contains_key("refresh_token") {
+                self.strategy.refresh_token(&parsed).await
+            } else {
+                self.strategy.authenticate(&parsed).await
+            };
+            if let Ok(exchanged) = exchanged {
+                let normalized = self.normalize_credentials(&exchanged).await?;
                 self.cached_credentials = Some(normalized.clone());
                 save_credential(CREDENTIAL_ACCOUNT, &serde_json::to_string(&normalized)?)?;
                 return Ok(normalized);
