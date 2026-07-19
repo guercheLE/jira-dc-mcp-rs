@@ -51,12 +51,32 @@ const VERSION_STORE_BYTES: &[(&str, &[u8])] = &[
 /// `cargo install`. The one difference from a schema lookup: SQLite
 /// needs a real file to open a `Connection` against (unlike a `&[u8]`
 /// JSON schema, read directly from memory), so this extracts the
-/// embedded bytes to a fixed path in the OS temp dir on every call —
-/// cheap, since it only runs once per process start, and it means a
-/// rebuilt binary with different embedded bytes (a `populate_embeddings`
-/// re-run, an `add-version` update) can never be shadowed by a stale
-/// leftover from a previous install at that same path.
+/// embedded bytes to a fixed path in the OS temp dir the first time a
+/// given `api_version` is requested in this process, then reuses that
+/// same path on every later call (see `EXTRACTED` below) — a rebuilt
+/// binary with different embedded bytes (a `populate_embeddings` re-run,
+/// an `add-version` update) still can never be shadowed by a stale
+/// leftover from a previous install, since a fresh process always
+/// extracts fresh.
 pub fn resolve_store_path(api_version: &str) -> Result<PathBuf> {
+    // `cached_store_connection` calls this on every tool invocation, and
+    // tool calls run concurrently (each MCP request is its own tokio
+    // task) — caching the resolved path per `api_version`, guarded by
+    // this same mutex, means the actual extract-and-rename-into-place
+    // below only ever runs once per `api_version` per process: every
+    // concurrent first caller blocks here rather than racing each other
+    // to write the same destination file. That race used to be real: on
+    // Windows, `rename`-ing over a destination another thread already has
+    // open via `open_store` can fail outright ("failed to move extracted
+    // store data into place") rather than just being non-atomic, unlike
+    // POSIX where the same rename silently succeeds.
+    static EXTRACTED: OnceLock<Mutex<HashMap<String, PathBuf>>> = OnceLock::new();
+    let extracted = EXTRACTED.get_or_init(|| Mutex::new(HashMap::new()));
+    let mut extracted = extracted.lock().unwrap();
+    if let Some(path) = extracted.get(api_version) {
+        return Ok(path.clone());
+    }
+
     let file = VERSION_STORE_FILES
         .iter()
         .find(|(label, _)| *label == api_version)
@@ -74,23 +94,18 @@ pub fn resolve_store_path(api_version: &str) -> Result<PathBuf> {
         .with_context(|| format!("failed to create temp dir '{}'", dir.display()))?;
 
     let path = dir.join(file);
-    // Always (re)writes rather than skipping when the path already
-    // exists: the extraction path doesn't vary by build, so a stale copy
-    // from a previous install (older embedded bytes, e.g. before a
-    // `populate_embeddings` re-run or an `add-version` update) would
-    // otherwise linger forever, silently serving outdated data. The
-    // write is cheap — this runs once per process start, not per query.
-    //
     // Writes to a uniquely-named sibling file first, then `rename`s it
-    // into place, rather than writing `path` directly: `cached_store_connection`
-    // calls this on every tool invocation (not just once at startup), and
-    // tool calls run concurrently (each MCP request is its own tokio
-    // task) — a direct write would let one task's `open_store` observe
-    // another task's in-progress truncate, reading a momentarily-empty
-    // file and failing with "no such table: endpoints". `rename` within
-    // the same directory is atomic on both POSIX and Windows, so every
-    // reader sees either the complete previous copy or the complete new
-    // one, never a partial write.
+    // into place, rather than writing `path` directly, so a *different*
+    // process sharing this same temp dir (a fresh `populate_embeddings`
+    // run, a second server instance starting up concurrently) never
+    // observes a momentarily-empty or partially-written file and fails
+    // with "no such table: endpoints". `rename` within the same
+    // directory is atomic on both POSIX and Windows with respect to
+    // content — a reader always sees either the complete previous copy
+    // or the complete new one, never a partial write — even though, as
+    // noted above, Windows can still refuse the rename outright if
+    // something in *this* process already has the destination open;
+    // the per-`api_version` cache above is what actually prevents that.
     //
     // `bytes` is the zstd-compressed `.db.zst` payload (see
     // `VERSION_STORE_BYTES`), not a valid SQLite file itself — it must be
@@ -117,6 +132,7 @@ pub fn resolve_store_path(api_version: &str) -> Result<PathBuf> {
         )
     })?;
 
+    extracted.insert(api_version.to_string(), path.clone());
     Ok(path)
 }
 
@@ -467,7 +483,12 @@ mod tests {
     fn cached_in_memory_connection_holds_no_lingering_lock_on_the_disk_file() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("mcp_store.db");
-        let _conn = seeded_store(&path);
+        // Dropped immediately after seeding: this is the *fixture's* own
+        // handle, not the one under test, and an open handle here would
+        // itself block the `remove_file` below on Windows (which — unlike
+        // POSIX — refuses to delete a file that's still open anywhere),
+        // masking whether `cached_in_memory_connection` released its own.
+        drop(seeded_store(&path));
 
         let cached = cached_in_memory_connection("cached-releases-disk-handle", &path).unwrap();
 
