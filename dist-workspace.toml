@@ -11,6 +11,14 @@ install-path = "CARGO_HOME"
 install-updater = false
 # fastembed/ort Windows binaries use the dynamic CRT.
 msvc-crt-static = false
+# release.yml is a deliberately simplified hand-written workflow (one job,
+# no plan/host/announce split) rather than dist's own multi-job
+# auto-generated shape -- `dist host --steps=create` (the release-tag
+# trigger) refuses to run against a workflow file it doesn't recognize as
+# its own output ("has out of date contents and needs to be regenerated"),
+# failing every real release. This tells dist the divergence is
+# intentional instead of stale.
+allow-dirty = ["ci"]
 
 [dist.github-custom-runners]
 # ONNX Runtime requires glibc >= 2.38.
