@@ -382,8 +382,19 @@ mod tests {
         let credentials = HashMap::new();
         let (env, config) = build_runtime_settings(
             "https://api.example/v1".to_string(),
-            prompt_auth_method().await.unwrap(),
-            prompt_api_version().await.unwrap(),
+            // Not `prompt_auth_method().await.unwrap()`/`prompt_api_version().await.unwrap()`:
+            // this test exercises the *non*-interactive output paths
+            // (`persist_selection`/`print_mcp_client_config`), but those
+            // prompt functions are only non-interactive themselves when
+            // there's exactly one choice to make -- with more than one
+            // auth method or API version they call `inquire::Select`,
+            // which needs a real TTY and panics with "The input device is
+            // not a TTY" in CI. Constructing the values directly (matching
+            // what `print_mcp_client_config` below already hardcodes)
+            // keeps this test TTY-independent regardless of how many
+            // schemes/versions the spec declares.
+            AuthMethod::Basic,
+            "11.3".to_string(),
             Transport::Http,
             &credentials,
         )
