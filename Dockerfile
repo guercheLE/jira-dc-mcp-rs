@@ -17,11 +17,24 @@ RUN apt-get update \
 
 COPY Cargo.toml Cargo.lock* ./
 COPY src ./src
-# Include every current and future API version store in the build context.
-COPY mcp_store*.db ./
+# The wildcard remains valid after `mcpify add-version` adds another store.
+# Only the zstd-compressed form is tracked in git (see .gitignore) — the
+# raw `.db` files alone can exceed crates.io's 10MiB package limit, and
+# `include_bytes!` in src/data/store.rs embeds the `.db.zst` bytes
+# directly, decompressing them at first use instead of at build time.
+COPY mcp_store*.db.zst ./
 
-# Populate every store before the final build so include_bytes! embeds vectors.
+# Build the helper first, populate every version, then perform the final
+# release build so `include_bytes!` captures the populated database bytes.
 RUN cargo build --locked --release --bin jira-dc-mcp-populate-embeddings
+
+# mcp_store.db leaves the Rust generator with an empty semantic_endpoints
+# table (vectors are computed here, not by mcpify itself — see the plan's
+# embeddings decision), so it must be populated before the image is usable.
+# populate-embeddings decompresses each `.db.zst` to a raw `.db` itself,
+# writes into it, then recompresses back to `.db.zst` and removes the raw
+# copy — so only `.db.zst` files remain afterward, which is what the
+# release build's include_bytes! call needs to see.
 RUN ./target/release/jira-dc-mcp-populate-embeddings --all
 RUN cargo build --locked --release
 
@@ -40,7 +53,7 @@ RUN apt-get update \
 
 COPY --from=builder /app/target/release/jira-dc-mcp ./jira-dc-mcp
 COPY --from=builder /app/target/release/jira-dc-mcp-healthcheck ./jira-dc-mcp-healthcheck
-COPY --from=builder /app/mcp_store*.db ./
+COPY --from=builder /app/mcp_store*.db.zst ./
 
 HEALTHCHECK --interval=30s --timeout=5s --retries=3 CMD ["./jira-dc-mcp-healthcheck"]
 

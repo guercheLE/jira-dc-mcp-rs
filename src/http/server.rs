@@ -159,3 +159,135 @@ pub async fn start_http_server(
 
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use std::net::{IpAddr, Ipv4Addr};
+
+    use crate::auth::auth_manager::AuthManager;
+    use crate::core::config_schema::{AuthMethod, Config};
+    use axum::body::Body;
+    use axum::http::{Request, header};
+    use tower::ServiceExt;
+
+    use super::*;
+
+    fn state() -> AppState {
+        AppState {
+            registry: Arc::new(TokioMutex::new(ComponentRegistry::new())),
+            header_location: "header",
+            header_name: "Authorization".to_string(),
+        }
+    }
+
+    fn request_from(ip: IpAddr, authorization: Option<&str>) -> Request<Body> {
+        let mut request = Request::builder().uri("/").body(Body::empty()).unwrap();
+        request
+            .extensions_mut()
+            .insert(ConnectInfo(SocketAddr::new(ip, 12345)));
+        if let Some(value) = authorization {
+            request
+                .headers_mut()
+                .insert(header::AUTHORIZATION, value.parse().unwrap());
+        }
+        request
+    }
+
+    #[tokio::test]
+    async fn health_metrics_auth_gate_cors_and_server_bootstrap_are_exercised() {
+        let state = state();
+        assert_eq!(
+            healthz(State(state.clone())).await.into_response().status(),
+            StatusCode::OK
+        );
+        {
+            let mut registry = state.registry.lock().await;
+            registry.register("database", true);
+            registry.report(
+                "database",
+                ComponentStatus::Unhealthy,
+                Some("failed".to_string()),
+            );
+        }
+        assert_eq!(
+            healthz(State(state.clone())).await.into_response().status(),
+            StatusCode::SERVICE_UNAVAILABLE
+        );
+        assert_eq!(
+            metrics_handler().await.into_response().status(),
+            StatusCode::OK
+        );
+
+        let gated = Router::new()
+            .route("/", get(|| async { StatusCode::NO_CONTENT }))
+            .layer(middleware::from_fn_with_state(state.clone(), auth_gate));
+        let remote = IpAddr::V4(Ipv4Addr::new(203, 0, 113, 10));
+        assert_eq!(
+            gated
+                .clone()
+                .oneshot(request_from(remote, None))
+                .await
+                .unwrap()
+                .status(),
+            StatusCode::UNAUTHORIZED
+        );
+        assert_eq!(
+            gated
+                .clone()
+                .oneshot(request_from(remote, Some("Bearer coverage")))
+                .await
+                .unwrap()
+                .status(),
+            StatusCode::NO_CONTENT
+        );
+        assert_eq!(
+            gated
+                .oneshot(request_from(IpAddr::V4(Ipv4Addr::LOCALHOST), None))
+                .await
+                .unwrap()
+                .status(),
+            StatusCode::NO_CONTENT
+        );
+
+        let cors = Router::new()
+            .route("/", get(|| async { StatusCode::OK }))
+            .layer(middleware::from_fn(|request, next| {
+                set_cors_header(Some("https://client.example".to_string()), request, next)
+            }));
+        let cors_response = cors
+            .oneshot(Request::builder().uri("/").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        assert_eq!(
+            cors_response.headers()[header::ACCESS_CONTROL_ALLOW_ORIGIN],
+            "https://client.example"
+        );
+
+        let config: Config = serde_json::from_value(serde_json::json!({
+            "url": "https://api.example.test",
+            "auth_method": "basic"
+        }))
+        .unwrap();
+        let auth_manager = Arc::new(TokioMutex::new(AuthManager::new(AuthMethod::Basic)));
+        let server_config = HttpServerConfig {
+            host: "not a valid socket address".to_string(),
+            port: 3000,
+            cors_allow: Some("https://client.example".to_string()),
+        };
+        let result = start_http_server(
+            move || {
+                Ok(McpifyServer::new(
+                    "11.3".to_string(),
+                    config.clone(),
+                    auth_manager.clone(),
+                ))
+            },
+            &server_config,
+            state.registry,
+            "header",
+            "Authorization".to_string(),
+        )
+        .await;
+        assert!(result.is_err());
+    }
+}

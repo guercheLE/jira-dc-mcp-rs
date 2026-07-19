@@ -33,12 +33,12 @@ pub const VERSION_STORE_FILES: &[(&str, &str)] = &[
 ];
 
 const VERSION_STORE_BYTES: &[(&str, &[u8])] = &[
-    ("11.3", include_bytes!("../../mcp_store.db")),
-    ("11.2", include_bytes!("../../mcp_store_v11.2.db")),
-    ("11.1", include_bytes!("../../mcp_store_v11.1.db")),
-    ("11.0", include_bytes!("../../mcp_store_v11.0.db")),
-    ("10.7", include_bytes!("../../mcp_store_v10.7.db")),
-    ("10.6", include_bytes!("../../mcp_store_v10.6.db")),
+    ("11.3", include_bytes!("../../mcp_store.db.zst")),
+    ("11.2", include_bytes!("../../mcp_store_v11.2.db.zst")),
+    ("11.1", include_bytes!("../../mcp_store_v11.1.db.zst")),
+    ("11.0", include_bytes!("../../mcp_store_v11.0.db.zst")),
+    ("10.7", include_bytes!("../../mcp_store_v10.7.db.zst")),
+    ("10.6", include_bytes!("../../mcp_store_v10.6.db.zst")),
 ];
 // mcpify:versions:end
 
@@ -91,13 +91,20 @@ pub fn resolve_store_path(api_version: &str) -> Result<PathBuf> {
     // the same directory is atomic on both POSIX and Windows, so every
     // reader sees either the complete previous copy or the complete new
     // one, never a partial write.
+    //
+    // `bytes` is the zstd-compressed `.db.zst` payload (see
+    // `VERSION_STORE_BYTES`), not a valid SQLite file itself — it must be
+    // decompressed before `rusqlite::Connection::open` can read it.
+    let decompressed = zstd::stream::decode_all(bytes).with_context(|| {
+        format!("failed to decompress embedded store data for api_version '{api_version}'")
+    })?;
     static UNIQUE: AtomicU64 = AtomicU64::new(0);
     let tmp_path = dir.join(format!(
         "{file}.{}.{}.tmp",
         std::process::id(),
         UNIQUE.fetch_add(1, Ordering::Relaxed)
     ));
-    std::fs::write(&tmp_path, bytes).with_context(|| {
+    std::fs::write(&tmp_path, decompressed).with_context(|| {
         format!(
             "failed to extract embedded store data to '{}'",
             tmp_path.display()
@@ -128,8 +135,8 @@ fn register_vec_extension() {
 }
 
 /// Opens `mcp_store.db` read-only: this crate's binaries only ever read
-/// it, except `jira-dc-mcp-populate-embeddings` (a separate `[[bin]]`),
-/// which uses `open_store_read_write` instead.
+/// it, except `jira-dc-mcp-populate-embeddings` (a separate `[[bin]]`), which uses
+/// `open_store_read_write` instead.
 pub fn open_store(path: &Path) -> Result<Connection> {
     register_vec_extension();
     Connection::open_with_flags(path, OpenFlags::SQLITE_OPEN_READ_ONLY)
@@ -152,9 +159,9 @@ pub fn open_store_read_write(path: &Path) -> Result<Connection> {
 /// SQLite's backup API), then drops the on-disk connection immediately —
 /// so its file handle/lock is held only for that brief copy, not for the
 /// process's lifetime. This means an external process (a fresh
-/// `jira-dc-mcp-populate-embeddings` run, a deployment replacing the file)
-/// can update `mcp_store.db` without hitting "database is locked" against a
-/// live server, at the cost of the running process only picking up such an
+/// `jira-dc-mcp-populate-embeddings` run, a deployment replacing the file) can update
+/// `mcp_store.db` without hitting "database is locked" against a live
+/// server, at the cost of the running process only picking up such an
 /// update on its next restart.
 ///
 /// Returns the connection behind a `Mutex` rather than handing it out

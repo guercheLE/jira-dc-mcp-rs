@@ -4,12 +4,43 @@ use jira_dc_mcp::core::config_manager::load_config;
 use jira_dc_mcp::data::store::cached_store_connection;
 use jira_dc_mcp::tools::search_tool::search_operations;
 
-pub async fn run(query: &str, limit: usize) -> anyhow::Result<()> {
+pub async fn run(
+    query: &str,
+    limit: usize,
+    profile_warmups: usize,
+    profile_iterations: usize,
+) -> anyhow::Result<()> {
+    if profile_iterations == 0 {
+        anyhow::bail!("--profile-iterations must be at least 1");
+    }
+
     let config = load_config(serde_json::Map::new())?;
     let conn = cached_store_connection(&config.api_version)?
         .lock()
         .unwrap();
-    let results = search_operations(&conn, query, limit)?;
+
+    for _ in 0..profile_warmups {
+        search_operations(&conn, query, limit)?;
+    }
+
+    // The global allocator is already installed by `main.rs`, but starting
+    // the profiler here excludes model and catalog warmup allocations.
+    #[cfg(feature = "profiling")]
+    let _dhat_profiler = dhat::Profiler::new_heap();
+
+    let started = std::time::Instant::now();
+    let mut results = search_operations(&conn, query, limit)?;
+    for _ in 1..profile_iterations {
+        results = search_operations(&conn, query, limit)?;
+    }
+
+    if profile_warmups > 0 || profile_iterations > 1 {
+        eprintln!(
+            "profile workload: {profile_warmups} warmup(s), {profile_iterations} measured iteration(s), {:.3} ms/iteration",
+            started.elapsed().as_secs_f64() * 1_000.0 / profile_iterations as f64
+        );
+    }
+
     println!("{}", serde_json::to_string_pretty(&results)?);
     Ok(())
 }

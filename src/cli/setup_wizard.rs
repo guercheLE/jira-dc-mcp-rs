@@ -2,8 +2,9 @@
 //
 // Interactive setup wizard (REQ-1.6): collects the API URL and the
 // credentials the discovered auth scheme(s) need, then persists them per
-// the operator's choice: a .env file, a config.json file, or a
-// ready-to-run CLI invocation printed to stdout (nothing written to disk).
+// the operator's choice: a .env file, a local or global config.yml file,
+// or a ready-to-run CLI invocation printed to stdout (nothing written to
+// disk).
 // `inquire`'s prompts are blocking — run through `spawn_blocking`, the
 // same pattern mcpify's own `auth_profile::prompt` documents for calling
 // it from an async runtime.
@@ -41,21 +42,16 @@ async fn prompt_base_url() -> anyhow::Result<String> {
 }
 
 async fn prompt_auth_method() -> anyhow::Result<AuthMethod> {
-    // The OpenAPI spec only documents Basic auth, but Data Center deployments
-    // also accept a Personal Access Token bearer — offer both.
-    let choices = vec![
-        "Personal Access Token (recommended)",
-        "Basic (username + password or app token)",
-    ];
+    let choices = vec!["basic", "pat"];
     let selection = tokio::task::spawn_blocking(move || {
-        inquire::Select::new("Which auth method should this deployment use?", choices).prompt()
+        inquire::Select::new("Authentication method:", choices).prompt()
     })
     .await??;
 
-    Ok(if selection.starts_with("Personal Access Token") {
-        AuthMethod::Pat
-    } else {
-        AuthMethod::Basic
+    Ok(match selection {
+        "basic" => AuthMethod::Basic,
+        "pat" => AuthMethod::Pat,
+        other => anyhow::bail!("unexpected auth method selection '{other}'"),
     })
 }
 
@@ -104,70 +100,76 @@ async fn prompt_transport() -> anyhow::Result<Transport> {
 }
 
 async fn prompt_credentials(auth_method: AuthMethod) -> anyhow::Result<HashMap<String, String>> {
-    tokio::task::spawn_blocking(move || -> anyhow::Result<HashMap<String, String>> {
-        let mut credentials = HashMap::new();
-        match auth_method {
-            AuthMethod::Basic => {
+    match auth_method {
+        AuthMethod::Basic => {
+            tokio::task::spawn_blocking(move || -> anyhow::Result<HashMap<String, String>> {
+                let mut credentials = HashMap::new();
                 credentials.insert(
                     "username".to_string(),
                     inquire::Text::new("Username:").prompt()?,
                 );
                 credentials.insert(
                     "password".to_string(),
-                    inquire::Password::new(
-                        "Password (or app/access token, if your account uses one):",
-                    )
-                    .without_confirmation()
-                    .prompt()?,
-                );
-            }
-            AuthMethod::Pat => {
-                credentials.insert(
-                    "token".to_string(),
-                    inquire::Password::new("Personal Access Token:")
+                    inquire::Password::new("Password:")
                         .without_confirmation()
                         .prompt()?,
                 );
-            }
+                Ok(credentials)
+            })
+            .await?
         }
-        Ok(credentials)
-    })
-    .await?
-}
-
-/// Strips the `JIRA_DC_MCP_` env-var prefix and lowercases each key, turning
-/// the wizard's `env` map (`JIRA_DC_MCP_URL`, `JIRA_DC_MCP_AUTH_METHOD`, ...)
-/// into the flat, unprefixed key shape `config_manager::load_config` actually
-/// reads from a YAML config file (`url`, `auth_method`, ...) — writing the
-/// env-shaped keys there would be silently ignored by the loader.
-fn to_config_yaml(env: &HashMap<String, String>) -> anyhow::Result<String> {
-    let mut config = serde_json::Map::new();
-    for (key, value) in env {
-        let config_key = key
-            .strip_prefix("JIRA_DC_MCP_")
-            .unwrap_or(key)
-            .to_lowercase();
-        config.insert(config_key, serde_json::Value::String(value.clone()));
+        AuthMethod::Pat => {
+            tokio::task::spawn_blocking(move || -> anyhow::Result<HashMap<String, String>> {
+                let mut credentials = HashMap::new();
+                credentials.insert(
+                    "token".to_string(),
+                    inquire::Password::new("Personal access token:")
+                        .without_confirmation()
+                        .prompt()?,
+                );
+                Ok(credentials)
+            })
+            .await?
+        }
     }
-    Ok(serde_yaml::to_string(&serde_json::Value::Object(config))?)
 }
 
-/// Persists the wizard's settings to a config file that
-/// `config_manager::load_config`'s cascade will actually read back on the
-/// next run — never to `.env`/`config.json`, which the runtime loader never
-/// consults. Offers a choice between the loader's local-cwd tier
-/// (`./jira-dc-mcp.config.yml`, checked first) and its home-dir tier
-/// (`~/.jira-dc-mcp/config.yml`, checked next), matching `load_config`'s
-/// cascade order and YAML format exactly (`src/core/config_manager.rs`).
-/// Credentials are never written here — they go through
-/// `save_credential`'s keychain/encrypted-file path instead.
+/// Persists the non-secret config fields (`url`/`auth_method`/`api_version`/
+/// `transport`) as YAML matching exactly what `config_manager::load_config`
+/// reads back — never the credential fields, which stay in the OS
+/// keychain/encrypted-file fallback via `save_credential` (called by the
+/// caller before this runs). Writing anywhere else (a stray `.env`-only
+/// var name, `config.json`, etc.) would leave the persisted config silently
+/// ignored on every subsequent run, since `load_config`'s cascade only ever
+/// reads `./jira-dc-mcp.config.yml` (local) or
+/// `~/.jira-dc-mcp/config.yml` (global).
+async fn write_config_yaml(
+    path: &std::path::Path,
+    config_fields: &serde_json::Value,
+) -> anyhow::Result<()> {
+    let yaml = serde_yaml::to_string(config_fields)?;
+    if let Some(parent) = path.parent()
+        && !parent.as_os_str().is_empty()
+    {
+        std::fs::create_dir_all(parent)?;
+    }
+    std::fs::write(path, yaml)?;
+    println!("Wrote {}", path.display());
+    println!(
+        "Credentials are never written to this file — they're stored via the OS \
+         keychain/encrypted-file fallback from the credential prompt above."
+    );
+    Ok(())
+}
+
 async fn prompt_persistence(
     env: &HashMap<String, String>,
-    credential_env_keys: &std::collections::HashSet<String>,
+    config_fields: &serde_json::Value,
 ) -> anyhow::Result<()> {
     let choices = vec![
-        "Write a global config file (~/.jira-dc-mcp/config.yml)",
-        "Write a local config file (./jira-dc-mcp.config.yml)",
+        "Write a .env file",
+        "Write a config.yml file (global — ~/.jira-dc-mcp/config.yml, read on every invocation on this machine)",
+        "Write a config.yml file (local — ./jira-dc-mcp.config.yml, read only from this directory)",
         "Print a ready-to-run CLI invocation (nothing written to disk)",
     ];
     let selection = tokio::task::spawn_blocking(move || {
@@ -175,32 +177,42 @@ async fn prompt_persistence(
     })
     .await??;
 
-    // Secrets never go into the config file — they're already persisted via
-    // `save_credential`'s keychain/encrypted-file path; only the
-    // non-secret settings (url, auth_method, api_version, transport, ...)
-    // belong in the YAML config.
-    let non_secret_env: HashMap<String, String> = env
-        .iter()
-        .filter(|(key, _)| !credential_env_keys.contains(*key))
-        .map(|(key, value)| (key.clone(), value.clone()))
-        .collect();
+    persist_selection(selection, env, config_fields).await
+}
 
+async fn persist_selection(
+    selection: &str,
+    env: &HashMap<String, String>,
+    config_fields: &serde_json::Value,
+) -> anyhow::Result<()> {
+    let local_dir = std::env::current_dir()?;
+    let global_config =
+        jira_dc_mcp::core::credential_storage::resolve_home_dir().join(".jira-dc-mcp/config.yml");
+    persist_selection_at(selection, env, config_fields, &local_dir, &global_config).await
+}
+
+async fn persist_selection_at(
+    selection: &str,
+    env: &HashMap<String, String>,
+    config_fields: &serde_json::Value,
+    local_dir: &std::path::Path,
+    global_config: &std::path::Path,
+) -> anyhow::Result<()> {
     match selection {
-        "Write a global config file (~/.jira-dc-mcp/config.yml)" => {
-            let home = std::env::var_os("HOME")
-                .or_else(|| std::env::var_os("USERPROFILE"))
-                .map(std::path::PathBuf::from)
-                .unwrap_or_else(|| std::path::PathBuf::from("."));
-            let dir = home.join(".jira-dc-mcp");
-            std::fs::create_dir_all(&dir)?;
-            let path = dir.join("config.yml");
-            std::fs::write(&path, to_config_yaml(&non_secret_env)?)?;
-            println!("Wrote {}", path.display());
+        "Write a .env file" => {
+            let contents = env
+                .iter()
+                .map(|(key, value)| format!("{key}={value}"))
+                .collect::<Vec<_>>()
+                .join("\n");
+            std::fs::write(local_dir.join(".env"), format!("{contents}\n"))?;
+            println!("Wrote .env");
         }
-        "Write a local config file (./jira-dc-mcp.config.yml)" => {
-            let path = std::path::PathBuf::from("jira-dc-mcp.config.yml");
-            std::fs::write(&path, to_config_yaml(&non_secret_env)?)?;
-            println!("Wrote {}", path.display());
+        s if s.starts_with("Write a config.yml file (global") => {
+            write_config_yaml(global_config, config_fields).await?;
+        }
+        s if s.starts_with("Write a config.yml file (local") => {
+            write_config_yaml(&local_dir.join("jira-dc-mcp.config.yml"), config_fields).await?;
         }
         _ => {
             let flags = env
@@ -214,6 +226,43 @@ async fn prompt_persistence(
         }
     }
     Ok(())
+}
+
+fn build_runtime_settings(
+    url: String,
+    auth_method: AuthMethod,
+    api_version: String,
+    transport: Transport,
+    credentials: &HashMap<String, String>,
+) -> anyhow::Result<(HashMap<String, String>, serde_json::Value)> {
+    let mut env = HashMap::new();
+    env.insert("JIRA_DC_MCP_URL".to_string(), url);
+    env.insert(
+        "JIRA_DC_MCP_AUTH_METHOD".to_string(),
+        serde_json::to_value(auth_method)?
+            .as_str()
+            .unwrap_or_default()
+            .to_string(),
+    );
+    env.insert("JIRA_DC_MCP_API_VERSION".to_string(), api_version);
+    env.insert(
+        "JIRA_DC_MCP_TRANSPORT".to_string(),
+        serde_json::to_value(transport)?
+            .as_str()
+            .unwrap_or_default()
+            .to_string(),
+    );
+    for (key, value) in credentials {
+        env.insert(format!("JIRA_DC_MCP_{}", to_env_key(key)), value.clone());
+    }
+
+    let config_fields = serde_json::json!({
+        "url": env.get("JIRA_DC_MCP_URL"),
+        "auth_method": env.get("JIRA_DC_MCP_AUTH_METHOD"),
+        "api_version": env.get("JIRA_DC_MCP_API_VERSION"),
+        "transport": env.get("JIRA_DC_MCP_TRANSPORT"),
+    });
+    Ok((env, config_fields))
 }
 
 /// Prints a ready-to-use MCP client config (the `mcpServers` block a host
@@ -289,32 +338,10 @@ pub async fn run_setup_wizard() -> anyhow::Result<()> {
 
     save_credential("active-credentials", &serde_json::to_string(&credentials)?)?;
 
-    let mut env: HashMap<String, String> = HashMap::new();
-    env.insert("JIRA_DC_MCP_URL".to_string(), url);
-    env.insert(
-        "JIRA_DC_MCP_AUTH_METHOD".to_string(),
-        serde_json::to_value(auth_method)?
-            .as_str()
-            .unwrap_or_default()
-            .to_string(),
-    );
-    env.insert("JIRA_DC_MCP_API_VERSION".to_string(), api_version);
-    env.insert(
-        "JIRA_DC_MCP_TRANSPORT".to_string(),
-        serde_json::to_value(transport)?
-            .as_str()
-            .unwrap_or_default()
-            .to_string(),
-    );
-    let credential_env_keys: std::collections::HashSet<String> = credentials
-        .keys()
-        .map(|key| format!("JIRA_DC_MCP_{}", to_env_key(key)))
-        .collect();
-    for (key, value) in &credentials {
-        env.insert(format!("JIRA_DC_MCP_{}", to_env_key(key)), value.clone());
-    }
+    let (env, config_fields) =
+        build_runtime_settings(url, auth_method, api_version, transport, &credentials)?;
 
-    prompt_persistence(&env, &credential_env_keys).await?;
+    prompt_persistence(&env, &config_fields).await?;
     print_mcp_client_config(transport, auth_method, &env);
 
     let run_command = match transport {
@@ -323,4 +350,97 @@ pub async fn run_setup_wizard() -> anyhow::Result<()> {
     };
     println!("Setup complete! Run: jira-dc-mcp {run_command}");
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn runtime_settings_keep_config_fields_and_filter_ephemeral_oauth_values() {
+        let credentials = HashMap::from([
+            ("client_id".to_string(), "client".to_string()),
+            ("authorization_code".to_string(), "spent-code".to_string()),
+        ]);
+        let (env, config) = build_runtime_settings(
+            "https://api.example/v1".to_string(),
+            AuthMethod::Basic,
+            "11.3".to_string(),
+            Transport::Stdio,
+            &credentials,
+        )
+        .unwrap();
+
+        assert_eq!(config["url"], "https://api.example/v1");
+        assert_eq!(config["transport"], "stdio");
+        assert_eq!(env["JIRA_DC_MCP_CLIENT_ID"], "client");
+        assert_eq!(env["JIRA_DC_MCP_AUTHORIZATION_CODE"], "spent-code");
+    }
+
+    #[tokio::test]
+    async fn noninteractive_output_paths_cover_both_transports() {
+        let credentials = HashMap::new();
+        let (env, config) = build_runtime_settings(
+            "https://api.example/v1".to_string(),
+            prompt_auth_method().await.unwrap(),
+            prompt_api_version().await.unwrap(),
+            Transport::Http,
+            &credentials,
+        )
+        .unwrap();
+        persist_selection("Print a ready-to-run CLI invocation", &env, &config)
+            .await
+            .unwrap();
+        print_mcp_client_config(Transport::Stdio, AuthMethod::Basic, &env);
+        print_mcp_client_config(Transport::Http, AuthMethod::Basic, &env);
+    }
+
+    #[tokio::test]
+    async fn file_persistence_writes_env_local_yaml_and_global_yaml() {
+        let dir = tempfile::tempdir().unwrap();
+        let local_dir = dir.path().join("local");
+        let global_config = dir.path().join("global/config.yml");
+        std::fs::create_dir_all(&local_dir).unwrap();
+
+        let credentials = HashMap::new();
+        let (env, config) = build_runtime_settings(
+            "https://api.example/v1".to_string(),
+            AuthMethod::Basic,
+            "11.3".to_string(),
+            Transport::Stdio,
+            &credentials,
+        )
+        .unwrap();
+        persist_selection_at(
+            "Write a .env file",
+            &env,
+            &config,
+            &local_dir,
+            &global_config,
+        )
+        .await
+        .unwrap();
+        persist_selection_at(
+            "Write a config.yml file (local — ./jira-dc-mcp.config.yml, read only from this directory)",
+            &env,
+            &config,
+            &local_dir,
+            &global_config,
+        )
+        .await
+        .unwrap();
+        persist_selection_at(
+            "Write a config.yml file (global — ~/.jira-dc-mcp/config.yml, read on every invocation on this machine)",
+            &env,
+            &config,
+            &local_dir,
+            &global_config,
+        )
+        .await
+        .unwrap();
+
+        assert!(local_dir.join(".env").is_file());
+        assert!(local_dir.join("jira-dc-mcp.config.yml").is_file());
+        assert!(global_config.is_file());
+    }
 }

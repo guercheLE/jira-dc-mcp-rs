@@ -29,14 +29,6 @@ fn default_search_limit() -> usize {
     5
 }
 
-/// Every operation's generated input JSON Schema unconditionally declares
-/// `"type": "object"`, even for zero-param operations — a `null` value
-/// (the previous default) always fails that validation, so a missing
-/// `arguments` field must default to a real empty object instead.
-fn default_call_arguments() -> serde_json::Value {
-    serde_json::json!({})
-}
-
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct SearchArgs {
     /// Natural-language description of the operation you need
@@ -52,13 +44,19 @@ pub struct GetArgs {
     pub operation_id: String,
 }
 
+/// A missing `arguments` field defaults to `{}`, not `null` — every
+/// operation's generated input JSON Schema unconditionally declares
+/// `"type": "object"`, even for zero-param operations, so `null` always
+/// fails validation while `{}` always passes.
+fn default_call_arguments() -> serde_json::Value {
+    serde_json::json!({})
+}
+
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct CallArgs {
     /// operationId returned by search
     pub operation_id: String,
-    /// Operation parameters and/or request body. Defaults to `{}` (not
-    /// `null`) when omitted, since every operation's generated schema
-    /// requires an object.
+    /// Operation parameters and/or request body. Defaults to `{}` when omitted.
     #[serde(default = "default_call_arguments")]
     pub arguments: serde_json::Value,
 }
@@ -228,4 +226,170 @@ where
     tracing::info!("MCP server connected over stdio");
     running.waiting().await?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::core::config_schema::AuthMethod;
+    use crate::data::store::list_endpoints;
+    use rmcp::model::CallToolRequestParams;
+
+    #[derive(Debug, Clone, Default)]
+    struct TestClient;
+
+    impl rmcp::ClientHandler for TestClient {}
+
+    fn server() -> McpifyServer {
+        let config: Config = serde_json::from_value(serde_json::json!({
+            "url": "https://api.example.test",
+            "auth_method": "basic"
+        }))
+        .unwrap();
+        McpifyServer::new(
+            "11.3".to_string(),
+            config,
+            Arc::new(Mutex::new(AuthManager::new(AuthMethod::Basic))),
+        )
+    }
+
+    #[test]
+    fn argument_defaults_match_the_public_tool_contract() {
+        assert_eq!(default_search_limit(), 5);
+        assert_eq!(default_call_arguments(), serde_json::json!({}));
+        let search: SearchArgs = serde_json::from_value(serde_json::json!({
+            "query": "find an operation"
+        }))
+        .unwrap();
+        assert_eq!(search.limit, 5);
+        let call: CallArgs = serde_json::from_value(serde_json::json!({
+            "operation_id": "an-operation"
+        }))
+        .unwrap();
+        assert_eq!(call.arguments, serde_json::json!({}));
+    }
+
+    #[tokio::test]
+    async fn search_and_get_return_mcp_content_envelopes() {
+        let server = server();
+        let search = server
+            .search(Parameters(SearchArgs {
+                query: "find an operation".to_string(),
+                limit: 2,
+            }))
+            .await
+            .unwrap();
+        assert_eq!(search.is_error, Some(false));
+
+        let operation_id = {
+            let conn = cached_store_connection("11.3").unwrap();
+            let conn = conn.lock().unwrap();
+            list_endpoints(&conn).unwrap()[0].operation_id.clone()
+        };
+        let get = server
+            .get(Parameters(GetArgs { operation_id }))
+            .await
+            .unwrap();
+        assert_eq!(get.is_error, Some(false));
+
+        let missing = server
+            .get(Parameters(GetArgs {
+                operation_id: "definitely-unknown-operation".to_string(),
+            }))
+            .await
+            .unwrap();
+        assert_eq!(missing.is_error, Some(true));
+    }
+
+    #[tokio::test]
+    async fn run_tool_formats_successes_and_failures_consistently() {
+        let server = server();
+        let success = server
+            .run_tool("coverage", async { Ok(serde_json::json!({ "ok": true })) })
+            .await
+            .unwrap();
+        assert_eq!(success.is_error, Some(false));
+        let failure = server
+            .run_tool("coverage", async { anyhow::bail!("coverage failure") })
+            .await
+            .unwrap();
+        assert_eq!(failure.is_error, Some(true));
+    }
+
+    #[test]
+    fn server_info_advertises_the_generated_tool_surface() {
+        let info = server().get_info();
+        assert_eq!(info.protocol_version, ProtocolVersion::V_2024_11_05);
+        assert!(info.capabilities.tools.is_some());
+        assert!(info.instructions.unwrap().contains("search, get, call"));
+    }
+
+    #[tokio::test]
+    async fn mcp_protocol_routes_search_get_and_call_requests() {
+        let (server_transport, client_transport) = tokio::io::duplex(64 * 1024);
+        let server_task = tokio::spawn(async move {
+            server().serve(server_transport).await?.waiting().await?;
+            anyhow::Ok(())
+        });
+        let client = TestClient.serve(client_transport).await.unwrap();
+
+        let tools = client.list_all_tools().await.unwrap();
+        assert_eq!(
+            tools
+                .iter()
+                .map(|tool| tool.name.as_ref())
+                .collect::<Vec<_>>(),
+            ["call", "get", "search"]
+        );
+        let search = client
+            .call_tool(
+                CallToolRequestParams::new("search").with_arguments(
+                    serde_json::json!({ "query": "find an operation", "limit": 1 })
+                        .as_object()
+                        .unwrap()
+                        .clone(),
+                ),
+            )
+            .await
+            .unwrap();
+        assert_eq!(search.is_error, Some(false));
+
+        let operation_id = {
+            let conn = cached_store_connection("11.3").unwrap();
+            let conn = conn.lock().unwrap();
+            list_endpoints(&conn).unwrap()[0].operation_id.clone()
+        };
+        let get = client
+            .call_tool(
+                CallToolRequestParams::new("get").with_arguments(
+                    serde_json::json!({ "operation_id": operation_id })
+                        .as_object()
+                        .unwrap()
+                        .clone(),
+                ),
+            )
+            .await
+            .unwrap();
+        assert_eq!(get.is_error, Some(false));
+
+        let call = client
+            .call_tool(
+                CallToolRequestParams::new("call").with_arguments(
+                    serde_json::json!({ "operation_id": "definitely-unknown", "arguments": {} })
+                        .as_object()
+                        .unwrap()
+                        .clone(),
+                ),
+            )
+            .await
+            .unwrap();
+        assert_eq!(call.is_error, Some(true));
+
+        drop(client);
+        tokio::time::timeout(std::time::Duration::from_secs(2), server_task)
+            .await
+            .unwrap()
+            .unwrap()
+            .unwrap();
+    }
 }

@@ -5,6 +5,33 @@ use rusqlite::Connection;
 use crate::data::store::search_endpoints;
 use crate::services::embedding_service::embed;
 
+/// Cheap diagnostic: compares `semantic_endpoints` row count against
+/// `endpoints` row count for the store behind `conn`. A store can end up
+/// with `endpoints` rows but no matching `semantic_endpoints` rows if the
+/// `populate-embeddings` step silently skipped or partially failed some
+/// rows — this surfaces that as a warning without changing the
+/// success/`[]` return contract for legitimately-empty search results.
+fn warn_if_embeddings_incomplete(conn: &Connection) -> bool {
+    let counts: rusqlite::Result<(i64, i64)> = conn.query_row(
+        "SELECT (SELECT COUNT(*) FROM endpoints), (SELECT COUNT(*) FROM semantic_endpoints)",
+        [],
+        |row| Ok((row.get(0)?, row.get(1)?)),
+    );
+    let incomplete = matches!(&counts, Ok((endpoints_count, semantic_count)) if semantic_count < endpoints_count);
+    if let Ok((endpoints_count, semantic_count)) = counts
+        && incomplete
+    {
+        tracing::warn!(
+            endpoints_count,
+            semantic_count,
+            "semantic_endpoints is missing {} row(s) compared to endpoints — search results \
+             may be incomplete; re-run populate-embeddings for this store",
+            endpoints_count - semantic_count
+        );
+    }
+    incomplete
+}
+
 /// Semantic similarity lookup matching a natural-language query against
 /// candidate API operations (PRD §1.5) — so an LLM never needs the full
 /// OpenAPI spec in context to find the right operation.
@@ -19,25 +46,22 @@ pub fn search_operations(
     Ok(serde_json::to_value(results)?)
 }
 
-/// Cheap diagnostic: if this store's `semantic_endpoints` row count is
-/// below its `endpoints` row count (e.g. `populate_embeddings` was never
-/// run, or a prior run failed partway before the completeness check was
-/// added), warn so the gap is visible in logs — without changing the
-/// success/`[]` return contract for legitimately-empty search results.
-fn warn_if_embeddings_incomplete(conn: &Connection) {
-    let counts: rusqlite::Result<(i64, i64)> = conn.query_row(
-        "SELECT (SELECT COUNT(*) FROM endpoints), (SELECT COUNT(*) FROM semantic_endpoints)",
-        [],
-        |row| Ok((row.get(0)?, row.get(1)?)),
-    );
-    if let Ok((endpoints_count, semantic_count)) = counts
-        && semantic_count < endpoints_count
-    {
-        tracing::warn!(
-            endpoints_count,
-            semantic_count,
-            "semantic_endpoints is missing embeddings for {} operation(s); run populate_embeddings to backfill",
-            endpoints_count - semantic_count
-        );
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn incomplete_embedding_catalog_diagnostic_handles_every_count_shape() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE endpoints (operation_id TEXT); \
+             CREATE TABLE semantic_endpoints (operation_id TEXT); \
+             INSERT INTO endpoints VALUES ('missing');",
+        )
+        .unwrap();
+        assert!(warn_if_embeddings_incomplete(&conn));
+        conn.execute("INSERT INTO semantic_endpoints VALUES ('missing')", [])
+            .unwrap();
+        assert!(!warn_if_embeddings_incomplete(&conn));
     }
 }

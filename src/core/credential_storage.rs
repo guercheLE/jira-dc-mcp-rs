@@ -11,11 +11,12 @@ use sha2::{Digest, Sha256};
 
 const SERVICE_NAME: &str = "jira-dc-mcp";
 
-/// Resolves the current user's home directory, trying `HOME` first (set on
-/// macOS/Linux and in most containers), then `USERPROFILE` (the Windows
-/// equivalent — `HOME` is not guaranteed to be set there), then falling
-/// back to the current directory so callers always get a usable path.
-fn resolve_home_dir() -> PathBuf {
+/// Resolves the user's home directory cross-platform: `HOME` (Unix/macOS),
+/// falling back to `USERPROFILE` (Windows), falling back to the current
+/// directory if neither is set — without this fallback, Windows deployments
+/// silently resolve config/credential paths to `.` (cwd) instead of erroring
+/// or using the user's actual profile directory.
+pub fn resolve_home_dir() -> PathBuf {
     std::env::var_os("HOME")
         .or_else(|| std::env::var_os("USERPROFILE"))
         .map(PathBuf::from)
@@ -146,11 +147,11 @@ pub fn save_credential(account: &str, value: &str) -> anyhow::Result<()> {
 pub fn load_credential(account: &str) -> anyhow::Result<Option<String>> {
     match Entry::new(SERVICE_NAME, account).and_then(|entry| entry.get_password()) {
         Ok(password) => Ok(Some(password)),
-        // Both "cleanly reports no entry" and "hard keychain error" fall
-        // back to the encrypted file: a credential saved via `save_to_file`
-        // (e.g. because the keychain was unavailable at save time) must
-        // stay reachable even once the keychain becomes available again
-        // but has no matching entry for `account`.
+        // A clean "no entry" from the keychain doesn't rule out a
+        // credential that only ever landed in the encrypted-file fallback
+        // (e.g. saved while the keychain backend was unavailable) — always
+        // consult the file before reporting nothing found, whether the
+        // keychain returned `NoEntry` or a harder error.
         Err(_) => load_from_file(account),
     }
 }

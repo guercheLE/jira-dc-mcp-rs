@@ -51,6 +51,12 @@ enum Command {
         query: String,
         #[arg(short = 'l', long, default_value_t = 5)]
         limit: usize,
+        /// Warm-up searches performed before measured profiling iterations.
+        #[arg(long, hide = true, default_value_t = 0)]
+        profile_warmups: usize,
+        /// Searches performed while CPU or heap profiling is active.
+        #[arg(long, hide = true, default_value_t = 1)]
+        profile_iterations: usize,
     },
     /// Show the schema, path, method, and documentation for one operation
     Get { operation_id: String },
@@ -173,14 +179,25 @@ async fn main() -> anyhow::Result<()> {
         .install_default()
         .expect("failed to install rustls crypto provider");
 
-    #[cfg(feature = "profiling")]
-    let _dhat_profiler = dhat::Profiler::new_heap();
-
     let cli = Cli::parse();
+
+    // Search starts DHAT inside `cli::search::run`, after its warmups. Other
+    // commands retain whole-process heap profiling when the feature is used.
+    #[cfg(feature = "profiling")]
+    let _dhat_profiler = if matches!(&cli.command, Command::Search { .. }) {
+        None
+    } else {
+        Some(dhat::Profiler::new_heap())
+    };
 
     let result = match cli.command {
         Command::Setup => cli::setup::run().await,
-        Command::Search { query, limit } => cli::search::run(&query, limit).await,
+        Command::Search {
+            query,
+            limit,
+            profile_warmups,
+            profile_iterations,
+        } => cli::search::run(&query, limit, profile_warmups, profile_iterations).await,
         Command::Get { operation_id } => cli::get::run(&operation_id).await,
         Command::Call { operation_id, args } => cli::call::run(&operation_id, &args).await,
         Command::Start => {

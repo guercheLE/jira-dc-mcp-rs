@@ -8,8 +8,6 @@ use serde::{Deserialize, Serialize};
 pub enum AuthMethod {
     #[serde(rename = "basic")]
     Basic,
-    /// Bearer-token auth via a Data Center Personal Access Token — accepted
-    /// by this API even though its OpenAPI spec only documents Basic auth.
     #[serde(rename = "pat")]
     Pat,
 }

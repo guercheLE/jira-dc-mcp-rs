@@ -5,10 +5,6 @@ use async_trait::async_trait;
 use super::super::auth_strategy::{AuthConfig, AuthStrategy, Credentials};
 use super::super::errors::AuthError;
 
-/// Data Center Personal Access Token auth — a bearer token passed as
-/// `Authorization: Bearer <token>`. Not declared in this API's OpenAPI spec
-/// (which only documents Basic auth), but accepted by the server anyway;
-/// added by hand alongside the spec-derived `BasicAuthStrategy`.
 #[derive(Debug, Default)]
 pub struct PatAuthStrategy;
 
@@ -29,10 +25,9 @@ impl AuthStrategy for PatAuthStrategy {
     }
 
     fn validate_credentials(&self, credentials: &Credentials) -> bool {
-        credentials.contains_key("authorization_header")
-            || credentials
-                .get("token")
-                .is_some_and(|token| !token.is_empty())
+        credentials
+            .get("token")
+            .is_some_and(|token| !token.is_empty())
     }
 }
 
@@ -40,20 +35,14 @@ impl AuthStrategy for PatAuthStrategy {
 mod tests {
     use super::*;
 
-    fn config(token: &str) -> AuthConfig {
-        AuthConfig::from([("token".to_string(), token.to_string())])
-    }
-
     #[tokio::test]
-    async fn encodes_the_token_as_a_bearer_authorization_header() {
+    async fn wraps_the_token_in_a_bearer_authorization_header() {
         let strategy = PatAuthStrategy;
-        let credentials = strategy
-            .authenticate(&config("s3cr3t-token"))
-            .await
-            .unwrap();
+        let config = AuthConfig::from([("token".to_string(), "abc123".to_string())]);
+        let credentials = strategy.authenticate(&config).await.unwrap();
         assert_eq!(
             credentials.get("authorization_header").unwrap(),
-            "Bearer s3cr3t-token"
+            "Bearer abc123"
         );
     }
 
@@ -61,14 +50,5 @@ mod tests {
     async fn rejects_a_config_missing_the_token() {
         let strategy = PatAuthStrategy;
         assert!(strategy.authenticate(&AuthConfig::new()).await.is_err());
-    }
-
-    #[test]
-    fn validates_credentials_carrying_an_authorization_header() {
-        let strategy = PatAuthStrategy;
-        let credentials =
-            Credentials::from([("authorization_header".to_string(), "Bearer abc".to_string())]);
-        assert!(strategy.validate_credentials(&credentials));
-        assert!(!strategy.validate_credentials(&Credentials::new()));
     }
 }

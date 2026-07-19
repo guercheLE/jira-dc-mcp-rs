@@ -75,6 +75,7 @@ mod tests {
         let credentials =
             Credentials::from([("authorization_header".to_string(), "Basic abc".to_string())]);
         assert!(strategy.validate_credentials(&credentials));
+        assert!(strategy.validate_credentials(&config("alice", "s3cr3t")));
         assert!(!strategy.validate_credentials(&Credentials::new()));
     }
 }

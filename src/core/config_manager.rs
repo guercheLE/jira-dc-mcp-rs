@@ -5,22 +5,19 @@ use std::path::{Path, PathBuf};
 use serde_json::{Map, Value};
 
 use super::config_schema::Config;
+use super::credential_storage::resolve_home_dir;
 use super::errors::McpifyError;
 
 const ENV_PREFIX: &str = "JIRA_DC_MCP";
 const CONFIG_DIR_NAME: &str = ".jira-dc-mcp";
 const LOCAL_CONFIG_FILE: &str = "jira-dc-mcp.config.yml";
 
-/// Env vars this crate reads directly (`HOME`/`USERPROFILE`) rather than via
-/// a `dirs`-style crate: keeps the dependency list matched to the toolchain
-/// table. Tries `HOME` first (macOS/Linux/containers), then `USERPROFILE`
-/// (Windows, where `HOME` is not guaranteed to be set), then falls back to
-/// the current directory.
+/// Shares `credential_storage::resolve_home_dir`'s cross-platform lookup
+/// (`HOME`, falling back to `USERPROFILE` on Windows, falling back to `.`)
+/// rather than reading `HOME` directly, so config-file resolution doesn't
+/// silently collapse to the current directory on Windows.
 fn home_dir() -> PathBuf {
-    std::env::var_os("HOME")
-        .or_else(|| std::env::var_os("USERPROFILE"))
-        .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from("."))
+    resolve_home_dir()
 }
 
 fn read_yaml_if_exists(path: &Path) -> Map<String, Value> {
@@ -31,6 +28,17 @@ fn read_yaml_if_exists(path: &Path) -> Map<String, Value> {
         Ok(Value::Object(map)) => map,
         _ => Map::new(),
     }
+}
+
+fn parse_env_value(config_key: &str, value: &str) -> Value {
+    if matches!(
+        config_key,
+        "rate_limit" | "timeout_ms" | "cache_size" | "retry_attempts" | "port"
+    ) && let Ok(number) = value.parse::<u64>()
+    {
+        return Value::Number(number.into());
+    }
+    Value::String(value.to_string())
 }
 
 fn env_overrides() -> Map<String, Value> {
@@ -50,7 +58,7 @@ fn env_overrides() -> Map<String, Value> {
         ("port", "PORT"),
     ] {
         if let Ok(value) = std::env::var(format!("{ENV_PREFIX}_{env_suffix}")) {
-            overrides.insert(config_key.to_string(), Value::String(value));
+            overrides.insert(config_key.to_string(), parse_env_value(config_key, &value));
         }
     }
     overrides
@@ -121,5 +129,19 @@ mod tests {
     fn missing_required_fields_report_a_configuration_error() {
         let err = load_config(Map::new()).unwrap_err();
         assert_eq!(err.code(), "CONFIGURATION_ERROR");
+    }
+
+    #[test]
+    fn numeric_environment_overrides_are_typed_before_deserialization() {
+        assert_eq!(parse_env_value("port", "33017"), json!(33017));
+        assert_eq!(parse_env_value("timeout_ms", "2500"), json!(2500));
+        assert_eq!(
+            parse_env_value("url", "https://api.example"),
+            json!("https://api.example")
+        );
+        assert_eq!(
+            parse_env_value("port", "not-a-number"),
+            json!("not-a-number")
+        );
     }
 }

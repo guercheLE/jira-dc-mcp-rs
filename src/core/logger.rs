@@ -15,9 +15,13 @@ const LOG_LEVEL_ENV_VAR: &str = "JIRA_DC_MCP_LOG_LEVEL";
 /// `otel`'s concrete layer type.
 pub type BoxedLayer = Box<dyn Layer<Registry> + Send + Sync>;
 
+fn resolve_log_level_from(value: Option<String>) -> String {
+    value.unwrap_or_else(|| "info".to_string())
+}
+
 /// `JIRA_DC_MCP_LOG_LEVEL`, defaulting to `"info"` when unset.
 pub fn resolve_log_level() -> String {
-    std::env::var(LOG_LEVEL_ENV_VAR).unwrap_or_else(|_| "info".to_string())
+    resolve_log_level_from(std::env::var(LOG_LEVEL_ENV_VAR).ok())
 }
 
 /// Installs the process-global structured logger: JSON output (pretty on an
@@ -37,7 +41,7 @@ pub fn resolve_log_level() -> String {
 pub fn init_logging(otel_layer: Option<BoxedLayer>) {
     let filter = EnvFilter::try_new(resolve_log_level()).unwrap_or_else(|_| EnvFilter::new("info"));
     // `.with_writer(std::io::stderr)`: the MCP stdio transport (see
-    // `mcp_server::connect_stdio`) speaks JSON-RPC over stdout -- any other
+    // `mcp_server::connect_stdio`) speaks JSON-RPC over stdout — any other
     // writer sharing that stream (tracing's default) corrupts every frame
     // parsed on the client side. Logs always go to stderr instead.
     let fmt_layer: BoxedLayer = if use_pretty_output() {
@@ -66,22 +70,11 @@ mod tests {
 
     #[test]
     fn defaults_to_info_when_env_var_unset() {
-        // SAFETY: test-only env mutation, single-threaded within this test.
-        unsafe {
-            std::env::remove_var(LOG_LEVEL_ENV_VAR);
-        }
-        assert_eq!(resolve_log_level(), "info");
+        assert_eq!(resolve_log_level_from(None), "info");
     }
 
     #[test]
     fn reads_the_configured_level_from_the_env_var() {
-        // SAFETY: test-only env mutation, single-threaded within this test.
-        unsafe {
-            std::env::set_var(LOG_LEVEL_ENV_VAR, "debug");
-        }
-        assert_eq!(resolve_log_level(), "debug");
-        unsafe {
-            std::env::remove_var(LOG_LEVEL_ENV_VAR);
-        }
+        assert_eq!(resolve_log_level_from(Some("debug".to_string())), "debug");
     }
 }

@@ -8,13 +8,10 @@ use jira_dc_mcp::core::api_url_builder::build_api_url;
 use jira_dc_mcp::core::config_manager::load_config;
 use jira_dc_mcp::core::config_schema::Transport;
 
-pub async fn run() -> anyhow::Result<()> {
-    let config = load_config(serde_json::Map::new())?;
-    let mut auth_manager = AuthManager::new(config.auth_method);
-    let headers = auth_manager
-        .apply_auth_headers(HashMap::new(), "GET", &config.url, Transport::Stdio, None)
-        .await?;
-
+async fn probe(
+    config: &jira_dc_mcp::core::config_schema::Config,
+    headers: HashMap<String, String>,
+) -> anyhow::Result<()> {
     let url = build_api_url(&config.url, "/", &[])?;
     let client = reqwest::Client::new();
     let mut request = client
@@ -24,17 +21,69 @@ pub async fn run() -> anyhow::Result<()> {
         request = request.header(key, value);
     }
 
-    match request.send().await {
-        Ok(response) if response.status().is_success() => {
-            println!("connection OK");
-            Ok(())
-        }
-        Ok(response) => {
-            anyhow::bail!("connection failed: HTTP {}", response.status());
-        }
-        Err(err) => {
-            eprintln!("connection failed: {err}");
-            std::process::exit(1);
-        }
+    let response = request.send().await?;
+    if response.status().is_success() {
+        println!("connection OK");
+        Ok(())
+    } else {
+        anyhow::bail!("connection failed: HTTP {}", response.status())
+    }
+}
+
+pub async fn run() -> anyhow::Result<()> {
+    let config = load_config(serde_json::Map::new())?;
+    let mut auth_manager = AuthManager::new(config.auth_method);
+    let headers = auth_manager
+        .apply_auth_headers(HashMap::new(), "GET", &config.url, Transport::Stdio, None)
+        .await?;
+
+    probe(&config, headers).await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    use tokio::net::TcpListener;
+
+    async fn server(status: &'static str) -> String {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            let (mut stream, _) = listener.accept().await.unwrap();
+            let mut request = [0u8; 2048];
+            let _ = stream.read(&mut request).await.unwrap();
+            let response =
+                format!("HTTP/1.1 {status}\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
+            stream.write_all(response.as_bytes()).await.unwrap();
+        });
+        format!("http://{address}")
+    }
+
+    fn config(url: String) -> jira_dc_mcp::core::config_schema::Config {
+        serde_json::from_value(serde_json::json!({
+            "url": url,
+
+            "auth_method": "basic",
+
+            "timeout_ms": 500
+        }))
+        .unwrap()
+    }
+
+    #[tokio::test]
+    async fn probe_accepts_success_and_rejects_error_statuses() {
+        assert!(
+            probe(&config(server("204 No Content").await), HashMap::new())
+                .await
+                .is_ok()
+        );
+        let error = probe(
+            &config(server("503 Service Unavailable").await),
+            HashMap::new(),
+        )
+        .await
+        .unwrap_err();
+        assert!(error.to_string().contains("HTTP 503"));
     }
 }
