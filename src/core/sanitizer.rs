@@ -74,4 +74,13 @@ mod tests {
         let input = json!({ "count": 3, "name": "widget" });
         assert_eq!(sanitize(&input), input);
     }
+
+    #[test]
+    fn recurses_into_array_values_under_a_non_sensitive_key() {
+        // "tags" (unlike "tokens") doesn't match any sensitive substring, so
+        // this exercises `sanitize`'s `Value::Array` branch directly rather
+        // than short-circuiting on the containing key.
+        let input = json!({ "tags": ["alpha", "beta"] });
+        assert_eq!(sanitize(&input), input);
+    }
 }

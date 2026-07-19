@@ -48,6 +48,12 @@ mod tests {
     }
 
     #[test]
+    fn handles_a_base_url_with_a_trailing_slash() {
+        let url = build_api_url("https://api.example.com/", "widgets", &[]).unwrap();
+        assert_eq!(url, "https://api.example.com/widgets");
+    }
+
+    #[test]
     fn appends_query_parameters() {
         let url = build_api_url(
             "https://api.example.com",

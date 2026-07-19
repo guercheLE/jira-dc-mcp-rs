@@ -159,4 +159,36 @@ mod tests {
             .await;
         assert!(ok.is_ok());
     }
+
+    #[test]
+    fn display_formats_both_error_variants() {
+        let open: CircuitBreakerError<anyhow::Error> = CircuitBreakerError::Open;
+        assert_eq!(open.to_string(), "circuit breaker is open");
+
+        let inner: CircuitBreakerError<anyhow::Error> =
+            CircuitBreakerError::Inner(anyhow::anyhow!("boom"));
+        assert_eq!(inner.to_string(), "boom");
+    }
+
+    #[tokio::test]
+    async fn transitions_to_half_open_after_the_reset_timeout_elapses() {
+        let breaker = CircuitBreaker::new(1, Duration::from_millis(1));
+
+        let _ = breaker
+            .execute(|| async { Err::<(), _>(anyhow::anyhow!("boom")) })
+            .await;
+        let blocked = breaker
+            .execute(|| async { Ok::<_, anyhow::Error>(()) })
+            .await;
+        assert!(matches!(blocked, Err(CircuitBreakerError::Open)));
+
+        tokio::time::sleep(Duration::from_millis(20)).await;
+
+        // Past the reset timeout, the breaker should let a trial call
+        // through (HALF_OPEN) rather than staying OPEN forever.
+        let trial = breaker
+            .execute(|| async { Ok::<_, anyhow::Error>(()) })
+            .await;
+        assert!(trial.is_ok());
+    }
 }

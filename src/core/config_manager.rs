@@ -132,6 +132,23 @@ mod tests {
     }
 
     #[test]
+    fn read_yaml_if_exists_parses_a_valid_yaml_object() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.yml");
+        std::fs::write(&path, "log_level: debug\n").unwrap();
+        let map = read_yaml_if_exists(&path);
+        assert_eq!(map.get("log_level"), Some(&json!("debug")));
+    }
+
+    #[test]
+    fn read_yaml_if_exists_ignores_non_object_yaml() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.yml");
+        std::fs::write(&path, "- just\n- a\n- list\n").unwrap();
+        assert!(read_yaml_if_exists(&path).is_empty());
+    }
+
+    #[test]
     fn numeric_environment_overrides_are_typed_before_deserialization() {
         assert_eq!(parse_env_value("port", "33017"), json!(33017));
         assert_eq!(parse_env_value("timeout_ms", "2500"), json!(2500));

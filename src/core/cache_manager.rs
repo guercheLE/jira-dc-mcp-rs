@@ -97,4 +97,21 @@ mod tests {
             .count();
         assert_eq!(remaining, 1);
     }
+
+    #[test]
+    fn clear_empties_every_entry() {
+        let cache: QueryCache<String> = QueryCache::new(10, Duration::from_secs(60));
+        cache.set("a".to_string(), "1".to_string());
+        cache.set("b".to_string(), "2".to_string());
+        cache.clear();
+        assert_eq!(cache.get("a"), None);
+        assert_eq!(cache.get("b"), None);
+    }
+
+    #[test]
+    fn default_produces_a_usable_cache() {
+        let cache: QueryCache<String> = QueryCache::default();
+        cache.set("key".to_string(), "value".to_string());
+        assert_eq!(cache.get("key"), Some("value".to_string()));
+    }
 }

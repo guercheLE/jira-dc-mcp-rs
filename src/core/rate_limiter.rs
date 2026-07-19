@@ -60,4 +60,10 @@ mod tests {
         let err = limiter.acquire().unwrap_err();
         assert_eq!(err.code(), "RATE_LIMIT_EXCEEDED");
     }
+
+    #[test]
+    fn default_allows_a_generous_baseline_rate() {
+        let limiter = RateLimiter::default();
+        assert!(limiter.acquire().is_ok());
+    }
 }

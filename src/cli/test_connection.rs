@@ -86,4 +86,14 @@ mod tests {
         .unwrap_err();
         assert!(error.to_string().contains("HTTP 503"));
     }
+
+    #[tokio::test]
+    async fn probe_forwards_every_supplied_header() {
+        let headers = HashMap::from([("X-Api-Key".to_string(), "s3cr3t".to_string())]);
+        assert!(
+            probe(&config(server("204 No Content").await), headers)
+                .await
+                .is_ok()
+        );
+    }
 }

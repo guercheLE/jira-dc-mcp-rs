@@ -174,6 +174,11 @@ mod tests {
     }
 
     #[test]
+    fn from_hex_rejects_an_odd_length_string() {
+        assert!(from_hex("abc").is_err());
+    }
+
+    #[test]
     fn file_fallback_round_trips_a_credential() {
         // Exercises the encrypted-file path directly rather than through
         // `save_credential`/`load_credential`, since the OS keychain (the

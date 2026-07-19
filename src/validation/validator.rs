@@ -199,4 +199,22 @@ mod tests {
         let err = validate_against(cache, "test_op_missing", &schema, &serde_json::json!({}));
         assert!(err.is_err());
     }
+
+    #[test]
+    fn validate_against_falls_back_to_an_always_valid_schema_when_compilation_fails() {
+        static CACHE: OnceLock<Mutex<HashMap<String, jsonschema::Validator>>> = OnceLock::new();
+        let cache = CACHE.get_or_init(|| Mutex::new(HashMap::new()));
+        // "not-a-real-type" isn't a recognized JSON Schema `type` value, so
+        // `jsonschema::validator_for` fails to compile it — exercising the
+        // always-valid-empty-schema fallback rather than a real validator.
+        let uncompilable_schema = serde_json::json!({"type": "not-a-real-type"});
+
+        let result = validate_against(
+            cache,
+            "test_op_uncompilable_schema",
+            &uncompilable_schema,
+            &serde_json::json!({"anything": true}),
+        );
+        assert!(result.is_ok());
+    }
 }
