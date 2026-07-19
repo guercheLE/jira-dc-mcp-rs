@@ -219,6 +219,8 @@ mod tests {
     use tokio::net::TcpListener;
 
     use super::*;
+    use crate::auth::auth_strategy::Credentials;
+    use crate::core::config_schema::AuthMethod;
 
     async fn mock_http(
         status: &'static str,
@@ -403,5 +405,65 @@ mod tests {
                 .await
                 .is_err()
         );
+    }
+
+    fn seeded_auth_manager() -> AuthManager {
+        let mut manager = AuthManager::new(AuthMethod::Basic);
+        manager.set_credentials(Credentials::from([(
+            "authorization_header".to_string(),
+            "Basic czNjcjN0".to_string(),
+        )]));
+        manager
+    }
+
+    #[tokio::test]
+    async fn execute_builds_the_url_applies_auth_and_parses_the_response() {
+        let (url, request, server) = mock_http("200 OK", r#"{"ok":true}"#).await;
+        let api_client = client(url.clone(), 0);
+        let endpoint = EndpointRecord {
+            operation_id: "op".to_string(),
+            path: "/widgets/{id}".to_string(),
+            method: "GET".to_string(),
+            summary: None,
+            description: None,
+            input_schema: serde_json::json!({
+                "parameters": [
+                    { "in": "path", "name": "id" },
+                    { "in": "query", "name": "limit" },
+                ]
+            }),
+            output_schema: Value::Null,
+            auth_scheme_ref: None,
+        };
+        let args = serde_json::json!({ "id": "abc 123", "limit": 5 });
+        let mut auth_manager = seeded_auth_manager();
+
+        let response = api_client
+            .execute(&endpoint, &args, &mut auth_manager, None)
+            .await
+            .unwrap();
+        assert_eq!(response, serde_json::json!({ "ok": true }));
+        server.await.unwrap();
+
+        let request = request.lock().unwrap();
+        assert!(request.contains("GET /widgets/abc%20123?limit=5 HTTP/1.1"));
+        assert!(
+            request
+                .to_ascii_lowercase()
+                .contains("authorization: basic")
+        );
+    }
+
+    #[tokio::test]
+    async fn execute_surfaces_a_dispatch_error_through_the_circuit_breaker() {
+        let local_url = disconnecting_server().await;
+        let api_client = client(local_url.clone(), 0);
+        let endpoint = endpoint("/widgets", Value::Null);
+        let mut auth_manager = seeded_auth_manager();
+
+        let result = api_client
+            .execute(&endpoint, &Value::Null, &mut auth_manager, None)
+            .await;
+        assert!(result.is_err());
     }
 }

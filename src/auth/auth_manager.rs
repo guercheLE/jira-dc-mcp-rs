@@ -304,4 +304,60 @@ mod tests {
 
         assert!(result.is_err());
     }
+
+    #[tokio::test]
+    async fn normalize_credentials_passes_through_an_already_usable_shape() {
+        let manager = AuthManager::new(AuthMethod::Basic);
+        let credentials =
+            Credentials::from([("authorization_header".to_string(), "Bearer abc".to_string())]);
+        let normalized = manager.normalize_credentials(&credentials).await.unwrap();
+        assert_eq!(normalized, credentials);
+    }
+
+    #[tokio::test]
+    async fn normalize_credentials_wraps_a_bare_access_token_as_a_bearer_header() {
+        let manager = AuthManager::new(AuthMethod::Basic);
+        let credentials = Credentials::from([("access_token".to_string(), "tok123".to_string())]);
+        let normalized = manager.normalize_credentials(&credentials).await.unwrap();
+        assert_eq!(
+            normalized.get("authorization_header").map(String::as_str),
+            Some("Bearer tok123")
+        );
+    }
+
+    #[tokio::test]
+    async fn normalize_credentials_falls_through_to_the_strategy_for_an_unrecognized_shape() {
+        let manager = AuthManager::new(AuthMethod::Basic);
+        let credentials = Credentials::from([("nonsense".to_string(), "x".to_string())]);
+        // Neither a known ready-to-use field nor an access token, so this
+        // falls through to re-authenticating via the active strategy, which
+        // rejects a shape missing whatever field(s) it actually requires.
+        assert!(manager.normalize_credentials(&credentials).await.is_err());
+    }
+    #[tokio::test]
+    async fn stdio_transport_prefers_an_existing_authorization_header() {
+        let mut manager = AuthManager::new(AuthMethod::Basic);
+        let mut credentials = Credentials::new();
+        credentials.insert(
+            "authorization_header".to_string(),
+            "Bearer preformatted".to_string(),
+        );
+        manager.set_credentials(credentials);
+
+        let headers = manager
+            .apply_auth_headers(
+                std::collections::HashMap::new(),
+                "GET",
+                "https://example.com",
+                Transport::Stdio,
+                None,
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(
+            headers.get("Authorization").map(String::as_str),
+            Some("Bearer preformatted")
+        );
+    }
 }

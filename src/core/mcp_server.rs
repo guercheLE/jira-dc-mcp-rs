@@ -385,6 +385,26 @@ mod tests {
             .unwrap();
         assert_eq!(call.is_error, Some(true));
 
+        // A *known* operationId exercises the rest of `call`'s pipeline
+        // (endpoint lookup succeeding, locking the shared `AuthManager`,
+        // and invoking `call_operation`) — unlike the unknown-operationId
+        // case above, which returns before ever reaching that code. The
+        // live request itself still fails (`server()`'s config points at
+        // a non-routable test domain), so this is still an error result,
+        // just from a different, later stage of the pipeline.
+        let real_call = client
+            .call_tool(
+                CallToolRequestParams::new("call").with_arguments(
+                    serde_json::json!({ "operation_id": operation_id, "arguments": {} })
+                        .as_object()
+                        .unwrap()
+                        .clone(),
+                ),
+            )
+            .await
+            .unwrap();
+        assert_eq!(real_call.is_error, Some(true));
+
         drop(client);
         tokio::time::timeout(std::time::Duration::from_secs(2), server_task)
             .await
