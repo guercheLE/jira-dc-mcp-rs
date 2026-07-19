@@ -139,6 +139,14 @@ fn profiling_feature_records_warmed_search_and_non_search_commands() {
 fn stdio_and_helper_binaries_cover_their_bootstrap_and_error_paths() {
     let stdio = generated_server(&["start"]);
     assert!(!stdio.status.success());
+    // The exact wording only holds on Unix: `Command::output()` leaves the
+    // child's stdin immediately EOF-closed, and rmcp's stdio transport
+    // surfaces that as "connection closed: initialize request" — but
+    // Windows's handling of a closed/null stdin handle for an async reader
+    // isn't the same, so only the platform-independent property (the
+    // server never completes the handshake and exits non-zero) is checked
+    // there.
+    #[cfg(unix)]
     assert!(stderr(&stdio).contains("connection closed: initialize request"));
 
     let healthy = Command::new(env!("CARGO_BIN_EXE_jira-dc-mcp-healthcheck"))
