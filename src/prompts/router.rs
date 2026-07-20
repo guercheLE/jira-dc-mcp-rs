@@ -14,7 +14,7 @@ use crate::prompts::{
 #[prompt_router(vis = "pub")]
 impl McpifyServer {
     #[prompt(
-        name = "jira_workflow",
+        name = "jira",
         description = "Start here. Presents the available Jira Data Center management \
                         workflows, routes to the right guided sub-workflow based on the \
                         user's goal, and -- where the environment supports it -- delegates \
@@ -33,7 +33,7 @@ impl McpifyServer {
     }
 
     #[prompt(
-        name = "jira_workflow_issues",
+        name = "jira-issues",
         description = "Guided issue lifecycle: discover the fields required to create an \
                         issue, look up and apply a valid transition on an existing issue, \
                         and verify the resulting state -- rather than guessing at required \
@@ -56,7 +56,7 @@ impl McpifyServer {
     }
 
     #[prompt(
-        name = "jira_workflow_project_setup",
+        name = "jira-project-setup",
         description = "Guided project bootstrap: create a project (or configure an existing \
                         one) and correctly wire up its workflow, permission, notification, \
                         priority, issue security, and issue type scheme associations -- \
@@ -78,7 +78,7 @@ impl McpifyServer {
     }
 
     #[prompt(
-        name = "jira_workflow_issue_collaboration",
+        name = "jira-issue-collaboration",
         description = "Comments, worklogs, attachments, issue links/remote links, watchers, \
                         and votes on an existing issue."
     )]
@@ -90,7 +90,7 @@ impl McpifyServer {
     }
 
     #[prompt(
-        name = "jira_workflow_search",
+        name = "jira-search",
         description = "JQL search over issues, saved filters, and search-result-size limits."
     )]
     async fn jira_workflow_search_prompt(&self) -> Vec<PromptMessage> {
@@ -101,7 +101,7 @@ impl McpifyServer {
     }
 
     #[prompt(
-        name = "jira_workflow_projects",
+        name = "jira-projects",
         description = "Project lifecycle, project categories, components, and versions."
     )]
     async fn jira_workflow_projects_prompt(&self) -> Vec<PromptMessage> {
@@ -112,7 +112,7 @@ impl McpifyServer {
     }
 
     #[prompt(
-        name = "jira_workflow_agile",
+        name = "jira-agile",
         description = "Jira Software boards, sprints, epics, and backlog management."
     )]
     async fn jira_workflow_agile_prompt(&self) -> Vec<PromptMessage> {
@@ -123,7 +123,7 @@ impl McpifyServer {
     }
 
     #[prompt(
-        name = "jira_workflow_workflows_statuses",
+        name = "jira-workflows-statuses",
         description = "Workflows and workflow schemes -- including the draft-then-publish \
                         two-phase edit model -- statuses/status categories, \
                         priorities/priority schemes, and resolutions."
@@ -136,7 +136,7 @@ impl McpifyServer {
     }
 
     #[prompt(
-        name = "jira_workflow_issue_types_fields",
+        name = "jira-issue-types-fields",
         description = "Issue types, issue type schemes and their project/issue-type \
                         associations, fields, custom fields, and screens/screen tabs."
     )]
@@ -148,7 +148,7 @@ impl McpifyServer {
     }
 
     #[prompt(
-        name = "jira_workflow_permissions_security",
+        name = "jira-permissions-security",
         description = "Permission schemes, issue security schemes/levels, project roles and \
                         role actors, and notification schemes."
     )]
@@ -160,7 +160,7 @@ impl McpifyServer {
     }
 
     #[prompt(
-        name = "jira_workflow_users_groups",
+        name = "jira-users-groups",
         description = "User and group lifecycle, application roles, `myself`/preferences, \
                         session/websudo auth, and password policy."
     )]
@@ -172,7 +172,7 @@ impl McpifyServer {
     }
 
     #[prompt(
-        name = "jira_workflow_admin_monitoring",
+        name = "jira-admin-monitoring",
         description = "Thin pointer to the right read-only or admin signal: cluster status, \
                         monitoring, reindex/index snapshots, server info, application \
                         properties, and dashboards."

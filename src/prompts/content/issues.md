@@ -1,7 +1,7 @@
 # Guided workflow: issues
 
 This sub-workflow is designed to be run as an isolated sub-task where
-possible -- if you were delegated here from `jira_workflow`'s routing, or
+possible -- if you were delegated here from `jira`'s routing, or
 your environment otherwise supports running this as its own sub-task,
 everything you need is in this prompt's own text plus the parameters already
 listed above; report back only a short summary when done rather than the
@@ -69,7 +69,7 @@ conversation. If no such sub-task mechanism is available, just make the
 calls directly, one after another.
 
 For the full detail on any one of comments, worklogs, attachments, links,
-watchers, or votes, fetch the `jira_workflow_issue_collaboration` prompt
+watchers, or votes, fetch the `jira-issue-collaboration` prompt
 rather than duplicating it here.
 
 ## Step 4 -- summarize
@@ -92,10 +92,10 @@ key, its final status, and any follow-on actions taken.
 ## Composing with other workflows
 
 - Picking (or creating) the right project overlaps with
-  `jira_workflow_projects`.
+  `jira-projects`.
 - Placing the issue on a board or into a sprint overlaps with
-  `jira_workflow_agile`.
-- Finding existing issues to act on overlaps with `jira_workflow_search`.
+  `jira-agile`.
+- Finding existing issues to act on overlaps with `jira-search`.
 
 Fetch those prompts by name for more detail rather than assuming their
 content from this one.

@@ -7,7 +7,7 @@ step-by-step trace.
 
 Covers the actions people take on an issue that already exists: comments,
 worklogs, attachments, issue links and remote links, watchers, and votes.
-For creating or transitioning the issue itself, use `jira_workflow_issues`
+For creating or transitioning the issue itself, use `jira-issues`
 instead.
 
 As always, describe every operation as a capability to search for -- e.g.
@@ -19,7 +19,7 @@ API versions).
 ## Pattern for each sub-resource
 
 1. Confirm you have an `issue_key`. If not, ask the user, or point them at
-   `jira_workflow_search` to find one.
+   `jira-search` to find one.
 2. Search for and call the operation matching the requested action
    (add/list/update/delete a comment, worklog, attachment, link, watcher, or
    vote).

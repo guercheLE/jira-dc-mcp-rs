@@ -62,31 +62,31 @@ async fn prompts_list_and_get_round_trip_over_the_mcp_protocol() {
         "expected exactly 12 prompts, got {names:?}"
     );
     for expected in [
-        "jira_workflow",
-        "jira_workflow_issues",
-        "jira_workflow_issue_collaboration",
-        "jira_workflow_search",
-        "jira_workflow_projects",
-        "jira_workflow_project_setup",
-        "jira_workflow_agile",
-        "jira_workflow_workflows_statuses",
-        "jira_workflow_issue_types_fields",
-        "jira_workflow_permissions_security",
-        "jira_workflow_users_groups",
-        "jira_workflow_admin_monitoring",
+        "jira",
+        "jira-issues",
+        "jira-issue-collaboration",
+        "jira-search",
+        "jira-projects",
+        "jira-project-setup",
+        "jira-agile",
+        "jira-workflows-statuses",
+        "jira-issue-types-fields",
+        "jira-permissions-security",
+        "jira-users-groups",
+        "jira-admin-monitoring",
     ] {
         assert!(names.contains(&expected), "missing prompt {expected}");
     }
-    assert!(names.iter().all(|name| name.starts_with("jira_workflow")));
+    assert!(names.iter().all(|name| name.starts_with("jira")));
 
     let project_setup_prompt = prompts
         .iter()
-        .find(|p| p.name == "jira_workflow_project_setup")
-        .expect("jira_workflow_project_setup should be advertised");
+        .find(|p| p.name == "jira-project-setup")
+        .expect("jira-project-setup should be advertised");
     let project_setup_args = project_setup_prompt
         .arguments
         .as_ref()
-        .expect("jira_workflow_project_setup should advertise arguments");
+        .expect("jira-project-setup should advertise arguments");
     for expected in ["project_key", "project_name", "project_type"] {
         assert!(
             project_setup_args.iter().any(|a| a.name == expected),
@@ -95,17 +95,17 @@ async fn prompts_list_and_get_round_trip_over_the_mcp_protocol() {
     }
     assert!(
         project_setup_args.iter().all(|a| a.required == Some(false)),
-        "every jira_workflow_project_setup argument should be optional"
+        "every jira-project-setup argument should be optional"
     );
 
     let issues_prompt = prompts
         .iter()
-        .find(|p| p.name == "jira_workflow_issues")
-        .expect("jira_workflow_issues should be advertised");
+        .find(|p| p.name == "jira-issues")
+        .expect("jira-issues should be advertised");
     let arg_names: Vec<&str> = issues_prompt
         .arguments
         .as_ref()
-        .expect("jira_workflow_issues should advertise arguments")
+        .expect("jira-issues should advertise arguments")
         .iter()
         .map(|a| a.name.as_str())
         .collect();
@@ -119,28 +119,26 @@ async fn prompts_list_and_get_round_trip_over_the_mcp_protocol() {
             .unwrap()
             .iter()
             .all(|a| a.required == Some(false)),
-        "every jira_workflow_issues argument should be optional"
+        "every jira-issues argument should be optional"
     );
 
-    // `jira_workflow` with no arguments should link to every sub-workflow,
+    // `jira` with no arguments should link to every sub-workflow,
     // including the newest one.
     let master = client
-        .get_prompt(GetPromptRequestParams::new("jira_workflow"))
+        .get_prompt(GetPromptRequestParams::new("jira"))
         .await
         .unwrap();
     let master_text = prompt_text(&master);
-    assert!(master_text.contains("jira_workflow_issues"));
-    assert!(master_text.contains("jira_workflow_project_setup"));
+    assert!(master_text.contains("jira-issues"));
+    assert!(master_text.contains("jira-project-setup"));
 
-    // `jira_workflow_issues` with partial arguments should echo the
+    // `jira-issues` with partial arguments should echo the
     // supplied values and list the still-missing ones.
     let mut partial_args = serde_json::Map::new();
     partial_args.insert("project_key".to_string(), serde_json::json!("PROJ"));
     partial_args.insert("issue_type".to_string(), serde_json::json!("Bug"));
     let issues = client
-        .get_prompt(
-            GetPromptRequestParams::new("jira_workflow_issues").with_arguments(partial_args),
-        )
+        .get_prompt(GetPromptRequestParams::new("jira-issues").with_arguments(partial_args))
         .await
         .unwrap();
     let issues_text = prompt_text(&issues);

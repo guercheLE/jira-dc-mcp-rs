@@ -15,28 +15,28 @@ delegation mechanism is available.
 
 ## Sub-workflows
 
-- **`jira_workflow_issues`** -- create an issue, transition an existing issue,
+- **`jira-issues`** -- create an issue, transition an existing issue,
   or both.
-- **`jira_workflow_issue_collaboration`** -- comments, worklogs, attachments,
+- **`jira-issue-collaboration`** -- comments, worklogs, attachments,
   issue links, watchers, and votes on an existing issue.
-- **`jira_workflow_search`** -- find issues with JQL, or work with saved
+- **`jira-search`** -- find issues with JQL, or work with saved
   filters.
-- **`jira_workflow_project_setup`** -- bootstrap a new project (or configure
+- **`jira-project-setup`** -- bootstrap a new project (or configure
   an existing one), wiring up its workflow, permission, notification,
   priority, and issue security scheme associations.
-- **`jira_workflow_projects`** -- project lifecycle, categories, components,
+- **`jira-projects`** -- project lifecycle, categories, components,
   and versions.
-- **`jira_workflow_agile`** -- boards, sprints, epics, and backlog
+- **`jira-agile`** -- boards, sprints, epics, and backlog
   management.
-- **`jira_workflow_workflows_statuses`** -- workflows, workflow schemes,
+- **`jira-workflows-statuses`** -- workflows, workflow schemes,
   statuses, priorities, and resolutions.
-- **`jira_workflow_issue_types_fields`** -- issue types, issue type schemes,
+- **`jira-issue-types-fields`** -- issue types, issue type schemes,
   fields, custom fields, and screens.
-- **`jira_workflow_permissions_security`** -- permission schemes, issue
+- **`jira-permissions-security`** -- permission schemes, issue
   security, project roles, and notification schemes.
-- **`jira_workflow_users_groups`** -- users, groups, application roles, and
+- **`jira-users-groups`** -- users, groups, application roles, and
   account/session settings.
-- **`jira_workflow_admin_monitoring`** -- cluster status, monitoring,
+- **`jira-admin-monitoring`** -- cluster status, monitoring,
   reindexing, and other read-only/admin signals.
 
 If the user's goal doesn't clearly match a sub-workflow above, ask a short

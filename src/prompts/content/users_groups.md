@@ -14,4 +14,4 @@ delete/anonymize call's own response.
 
 For granting a user or group access to a specific project or scheme (as
 opposed to managing the user/group itself), see
-`jira_workflow_permissions_security`.
+`jira-permissions-security`.

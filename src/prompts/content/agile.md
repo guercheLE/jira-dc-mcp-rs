@@ -42,5 +42,5 @@ response. If no such mechanism is available, do it directly but summarize
 the result rather than repeating it in full.
 
 For creating or transitioning the issues themselves, use
-`jira_workflow_issues`; for finding issues to move, use
-`jira_workflow_search`.
+`jira-issues`; for finding issues to move, use
+`jira-search`.

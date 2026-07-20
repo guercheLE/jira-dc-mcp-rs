@@ -60,6 +60,6 @@ workflow schemes.
 ## Composing with other workflows
 
 Assigning issue security or permission schemes to a project is a separate
-concern -- see `jira_workflow_permissions_security`. Issue type scheme
+concern -- see `jira-permissions-security`. Issue type scheme
 associations (which issue types exist for a project) live in
-`jira_workflow_issue_types_fields`.
+`jira-issue-types-fields`.

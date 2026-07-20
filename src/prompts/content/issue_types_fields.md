@@ -16,7 +16,7 @@ issue type scheme" -- never a specific `operationId`, and read the schema
 - **Which fields are required or even visible** for a given project +
   issue type combination depends on the screen scheme and field
   configuration in play, not just whether the field exists globally. This
-  is exactly what `jira_workflow_issues` searches for before creating an
+  is exactly what `jira-issues` searches for before creating an
   issue -- reuse that pattern here rather than assuming a custom field
   applies everywhere it's defined.
 - **Custom field creation and custom field *usage*** are different
@@ -34,4 +34,4 @@ issue type scheme" -- never a specific `operationId`, and read the schema
 3. Make the requested change, then verify it with a follow-up read.
 
 For workflow-status behavior once an issue type exists, see
-`jira_workflow_workflows_statuses`.
+`jira-workflows-statuses`.

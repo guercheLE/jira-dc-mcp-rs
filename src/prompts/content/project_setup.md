@@ -1,7 +1,7 @@
 # Guided workflow: project setup
 
 This sub-workflow is designed to be run as an isolated sub-task where
-possible -- if you were delegated here from `jira_workflow`'s routing, or
+possible -- if you were delegated here from `jira`'s routing, or
 your environment otherwise supports running this as its own sub-task,
 everything you need is in this prompt's own text plus the parameters
 already listed above; report back only a short summary when done rather
@@ -64,9 +64,9 @@ make the calls directly, one after another.
 For the full detail on any one scheme -- what it controls, and any gotchas
 specific to editing it (e.g. the workflow-scheme draft/publish model) --
 fetch the prompt that owns that domain rather than duplicating it here:
-`jira_workflow_workflows_statuses` (workflow scheme),
-`jira_workflow_permissions_security` (permission/notification/security
-schemes), `jira_workflow_issue_types_fields` (issue type scheme
+`jira-workflows-statuses` (workflow scheme),
+`jira-permissions-security` (permission/notification/security
+schemes), `jira-issue-types-fields` (issue type scheme
 association).
 
 ## Step 4 -- verify
@@ -83,11 +83,11 @@ and type (if newly created), and which schemes were confirmed assigned.
 ## Composing with other workflows
 
 - Adding issue types or custom fields beyond the scheme association itself
-  overlaps with `jira_workflow_issue_types_fields`.
+  overlaps with `jira-issue-types-fields`.
 - Assigning project roles and their members overlaps with
-  `jira_workflow_permissions_security`.
+  `jira-permissions-security`.
 - Creating the project's first issues, versions, or components overlaps
-  with `jira_workflow_issues` and `jira_workflow_projects`.
+  with `jira-issues` and `jira-projects`.
 
 Fetch those prompts by name for more detail rather than assuming their
 content from this one.

@@ -27,8 +27,8 @@ component/version operations are scoped to a single project and need it.
   the user wants a project out of the way but recoverable.
 
 For creating and managing issue types, issue type schemes, and custom
-fields available to a project, see `jira_workflow_issue_types_fields`. For
+fields available to a project, see `jira-issue-types-fields`. For
 permission/security scheme assignment, see
-`jira_workflow_permissions_security`. For bootstrapping a brand new project
+`jira-permissions-security`. For bootstrapping a brand new project
 end to end (type selection, creation, and scheme wiring), see
-`jira_workflow_project_setup`.
+`jira-project-setup`.

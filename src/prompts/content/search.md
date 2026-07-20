@@ -23,5 +23,5 @@ mechanism is available, apply `maxResults`/paging yourself and summarize
 rather than dumping every returned issue.
 
 To act on an issue once found (comment, transition, link, etc.), hand off to
-`jira_workflow_issues` or `jira_workflow_issue_collaboration` with the
+`jira-issues` or `jira-issue-collaboration` with the
 resolved `issue_key` rather than duplicating that logic here.
