@@ -30,7 +30,17 @@ jobs:
           targets: ${{ matrix.target }}
       - uses: Swatinem/rust-cache@v2.9.1
       - name: Install cargo-dist
-        run: cargo install cargo-dist --version 0.32.0 --locked
+        # Prebuilt-binary installer rather than `cargo install cargo-dist
+        # --locked` (which compiled it from source on every run, several
+        # minutes even on Linux/macOS and roughly double that on Windows)
+        # -- cargo-dist publishes and recommends these installer scripts
+        # for exactly this use case. Installs to the same $CARGO_HOME/bin
+        # already on PATH, so no further setup is needed.
+        if: runner.os != 'Windows'
+        run: curl --proto '=https' --tlsv1.2 -LsSf https://github.com/axodotdev/cargo-dist/releases/download/v0.32.0/cargo-dist-installer.sh | sh
+      - name: Install cargo-dist (Windows)
+        if: runner.os == 'Windows'
+        run: powershell -ExecutionPolicy Bypass -c "irm https://github.com/axodotdev/cargo-dist/releases/download/v0.32.0/cargo-dist-installer.ps1 | iex"
       - name: Verify
         run: cargo test --locked
       - name: Verify DHAT profiling lifecycle
