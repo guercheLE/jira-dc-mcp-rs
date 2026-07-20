@@ -12,6 +12,7 @@ pub mod auth;
 pub mod core;
 pub mod data;
 pub mod http;
+pub mod prompts;
 pub mod services;
 pub mod tools;
 pub mod validation;
