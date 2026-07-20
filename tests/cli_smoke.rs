@@ -193,8 +193,17 @@ fn stdio_and_helper_binaries_cover_their_bootstrap_and_error_paths() {
         .unwrap();
     assert!(populated.status.success(), "{}", stderr(&populated));
 
-    let setup = generated_server(&["setup"]);
-    assert!(!setup.status.success());
+    // Same GitHub-Actions-Windows-only skip as the stdio check above, and
+    // for a related reason: `setup` drives `inquire`'s interactive
+    // Text/Select/Password prompts, and `inquire`'s Windows backend reads
+    // raw console input rather than treating a closed/non-console stdin as
+    // an immediate EOF the way Unix does -- so this call blocks
+    // indefinitely there too, instead of failing fast once the first
+    // prompt has nothing to read.
+    if !skip_on_windows_ci {
+        let setup = generated_server(&["setup"]);
+        assert!(!setup.status.success());
+    }
 
     let test_connection = generated_server(&["test-connection"]);
     assert!(!test_connection.status.success());
