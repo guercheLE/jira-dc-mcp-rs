@@ -9,7 +9,10 @@ any field name in it.
 Ask the user for their intent in plain terms and translate it into a JQL
 query yourself rather than asking them to write JQL, unless they've already
 given you one. If a saved filter already covers the need, prefer reusing or
-referencing it over rebuilding the same query ad hoc.
+referencing it over rebuilding the same query ad hoc. A saved filter has its
+own sharing/visibility settings, separate from the filter's query itself --
+search for how to read or change a filter's share permissions if the user
+wants to control who else can see or use it.
 
 **A JQL search can return far more issues than are useful to pull into this
 conversation.** If your environment provides a way to run a sub-task in its

@@ -40,6 +40,10 @@ API versions).
   ask the user whether they want the remaining estimate auto-adjusted,
   left alone, or set to a specific value before logging work, since the
   default behavior can silently change the issue's estimate.
+- **Manually notifying people** is a separate operation from watchers --
+  search for how to send a notification about an issue to chosen
+  recipients if the user wants to alert someone who isn't (and shouldn't
+  necessarily become) a watcher.
 
 ## Independent actions (parallelizable, delegable)
 

@@ -21,6 +21,9 @@ delegation mechanism is available.
   issue links, watchers, and votes on an existing issue.
 - **`jira_workflow_search`** -- find issues with JQL, or work with saved
   filters.
+- **`jira_workflow_project_setup`** -- bootstrap a new project (or configure
+  an existing one), wiring up its workflow, permission, notification,
+  priority, and issue security scheme associations.
 - **`jira_workflow_projects`** -- project lifecycle, categories, components,
   and versions.
 - **`jira_workflow_agile`** -- boards, sprints, epics, and backlog

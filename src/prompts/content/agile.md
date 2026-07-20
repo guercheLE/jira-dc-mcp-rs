@@ -22,6 +22,14 @@ field name in it.
 3. For epics: an issue's epic link and a sprint's issue membership are
    independent facts about the issue -- don't assume setting one implies
    the other.
+4. For estimation: an issue's estimate is set *per board*, and which field
+   that actually means (story points vs. original time estimate) is that
+   board's own configuration -- search for and read the board's
+   configuration before setting an estimate, rather than assuming a field
+   name.
+5. Ranking an issue or epic (its position in the backlog/board order) is a
+   distinct operation from moving it into a sprint or epic -- don't assume
+   one implies the other.
 
 ## Bulk operations (delegable)
 

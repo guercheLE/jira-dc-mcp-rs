@@ -7,7 +7,9 @@ use rmcp::model::{PromptMessage, Role};
 use rmcp::{prompt, prompt_router};
 
 use crate::core::mcp_server::McpifyServer;
-use crate::prompts::{IssuesWorkflowArgs, MasterWorkflowArgs, render_context_header};
+use crate::prompts::{
+    IssuesWorkflowArgs, MasterWorkflowArgs, ProjectSetupWorkflowArgs, render_context_header,
+};
 
 #[prompt_router(vis = "pub")]
 impl McpifyServer {
@@ -50,6 +52,28 @@ impl McpifyServer {
         vec![PromptMessage::new_text(
             Role::User,
             format!("{header}\n{}", include_str!("content/issues.md")),
+        )]
+    }
+
+    #[prompt(
+        name = "jira_workflow_project_setup",
+        description = "Guided project bootstrap: create a project (or configure an existing \
+                        one) and correctly wire up its workflow, permission, notification, \
+                        priority, issue security, and issue type scheme associations -- \
+                        rather than leaving new projects on unreviewed defaults."
+    )]
+    async fn jira_workflow_project_setup_prompt(
+        &self,
+        Parameters(args): Parameters<ProjectSetupWorkflowArgs>,
+    ) -> Vec<PromptMessage> {
+        let header = render_context_header(&[
+            ("project_key", args.project_key.as_deref()),
+            ("project_name", args.project_name.as_deref()),
+            ("project_type", args.project_type.as_deref()),
+        ]);
+        vec![PromptMessage::new_text(
+            Role::User,
+            format!("{header}\n{}", include_str!("content/project_setup.md")),
         )]
     }
 

@@ -77,6 +77,18 @@ rather than duplicating it here.
 Report what was created or changed and confirmed, in plain terms: the issue
 key, its final status, and any follow-on actions taken.
 
+## Other real gotchas
+
+- **Archiving.** An archived issue becomes read-only and is excluded from
+  default search results -- if the user wants an issue "gone" but
+  recoverable, search for the archive/restore operations rather than
+  deleting; if they mention an issue they can't find, check whether it's
+  archived before assuming it doesn't exist.
+- **Bulk creation.** A bulk-create operation exists for creating many
+  issues at once. It commonly reports success/failure per issue rather than
+  failing the whole batch atomically -- check each item's own result before
+  telling the user the batch succeeded.
+
 ## Composing with other workflows
 
 - Picking (or creating) the right project overlaps with

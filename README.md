@@ -118,6 +118,42 @@ Use the absolute executable path if `jira-dc-mcp` is not on the MCP host's `PATH
 
 Keep the listener on localhost unless you have added appropriate network access controls and TLS in front of it.
 
+## Guided workflows
+
+Alongside `search`/`get`/`call`, the server exposes an MCP **prompts**
+capability: instructional, step-by-step guidance for common multi-step Jira
+Data Center tasks, layered on top of the same 3 tools rather than replacing
+them. A client discovers prompts with `prompts/list` and fetches one's
+instructions with `prompts/get` (optionally supplying any arguments it
+already knows — every argument is optional, and each prompt's own text asks
+for whatever is still missing). Start with the `jira_workflow` master
+prompt, which routes to the right sub-workflow based on the user's goal and,
+where the calling environment supports running isolated sub-tasks, delegates
+the whole matched sub-workflow to one to keep the resulting `search`/`get`/
+`call` traffic out of the main conversation.
+
+Every prompt's instructions describe operations by capability ("search for
+how to get the available transitions for an issue"), never by a hardcoded
+`operationId` or an assumed response field name — the same operation can
+differ in existence or shape across this project's 6 supported API
+versions, so each guided step tells the caller to read the schema `get`
+actually returns before relying on it.
+
+| Prompt | Covers |
+|---|---|
+| `jira_workflow` | Master index: menu and goal-based routing to the sub-workflows below. |
+| `jira_workflow_issues` | Create an issue (discovering its required fields first), or transition an existing one (looking up valid transitions first). |
+| `jira_workflow_project_setup` | Bootstrap a new project, or configure an existing one's workflow, permission, notification, priority, and issue security scheme associations. |
+| `jira_workflow_issue_collaboration` | Comments, worklogs, attachments, issue links/remote links, watchers, and votes on an existing issue. |
+| `jira_workflow_search` | Find issues with JQL, or work with saved filters. |
+| `jira_workflow_projects` | Project lifecycle, categories, components, and versions (including release and archive gotchas). |
+| `jira_workflow_agile` | Boards, sprints, epics, and backlog management. |
+| `jira_workflow_workflows_statuses` | Workflows and workflow schemes (including the draft-then-publish edit model), statuses, priorities, and resolutions. |
+| `jira_workflow_issue_types_fields` | Issue types, issue type schemes, fields, custom fields, and screens. |
+| `jira_workflow_permissions_security` | Permission schemes, issue security, project roles, and notification schemes. |
+| `jira_workflow_users_groups` | Users, groups, application roles, and account/session settings. |
+| `jira_workflow_admin_monitoring` | Cluster status, monitoring, reindexing, email template customization, and other read-only/admin signals. |
+
 ## Docker
 
 ```bash

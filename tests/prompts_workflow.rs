@@ -58,8 +58,8 @@ async fn prompts_list_and_get_round_trip_over_the_mcp_protocol() {
     let names: Vec<&str> = prompts.iter().map(|p| p.name.as_ref()).collect();
     assert_eq!(
         names.len(),
-        11,
-        "expected exactly 11 prompts, got {names:?}"
+        12,
+        "expected exactly 12 prompts, got {names:?}"
     );
     for expected in [
         "jira_workflow",
@@ -67,6 +67,7 @@ async fn prompts_list_and_get_round_trip_over_the_mcp_protocol() {
         "jira_workflow_issue_collaboration",
         "jira_workflow_search",
         "jira_workflow_projects",
+        "jira_workflow_project_setup",
         "jira_workflow_agile",
         "jira_workflow_workflows_statuses",
         "jira_workflow_issue_types_fields",
@@ -77,6 +78,25 @@ async fn prompts_list_and_get_round_trip_over_the_mcp_protocol() {
         assert!(names.contains(&expected), "missing prompt {expected}");
     }
     assert!(names.iter().all(|name| name.starts_with("jira_workflow")));
+
+    let project_setup_prompt = prompts
+        .iter()
+        .find(|p| p.name == "jira_workflow_project_setup")
+        .expect("jira_workflow_project_setup should be advertised");
+    let project_setup_args = project_setup_prompt
+        .arguments
+        .as_ref()
+        .expect("jira_workflow_project_setup should advertise arguments");
+    for expected in ["project_key", "project_name", "project_type"] {
+        assert!(
+            project_setup_args.iter().any(|a| a.name == expected),
+            "missing argument {expected}"
+        );
+    }
+    assert!(
+        project_setup_args.iter().all(|a| a.required == Some(false)),
+        "every jira_workflow_project_setup argument should be optional"
+    );
 
     let issues_prompt = prompts
         .iter()
@@ -102,12 +122,15 @@ async fn prompts_list_and_get_round_trip_over_the_mcp_protocol() {
         "every jira_workflow_issues argument should be optional"
     );
 
-    // `jira_workflow` with no arguments should link to `jira_workflow_issues`.
+    // `jira_workflow` with no arguments should link to every sub-workflow,
+    // including the newest one.
     let master = client
         .get_prompt(GetPromptRequestParams::new("jira_workflow"))
         .await
         .unwrap();
-    assert!(prompt_text(&master).contains("jira_workflow_issues"));
+    let master_text = prompt_text(&master);
+    assert!(master_text.contains("jira_workflow_issues"));
+    assert!(master_text.contains("jira_workflow_project_setup"));
 
     // `jira_workflow_issues` with partial arguments should echo the
     // supplied values and list the still-missing ones.

@@ -26,6 +26,16 @@ pub struct IssuesWorkflowArgs {
     pub issue_key: Option<String>,
 }
 
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct ProjectSetupWorkflowArgs {
+    /// Key of the project to create or configure (e.g. "PROJ")
+    pub project_key: Option<String>,
+    /// Name of the project to create
+    pub project_name: Option<String>,
+    /// Project type key for a new project (e.g. "software", "business", "service_desk")
+    pub project_type: Option<String>,
+}
+
 /// Renders a short "what's already known" header to prepend to a prompt's
 /// static markdown body, so its step-by-step instructions can tell the
 /// calling LLM exactly which parameters still need to be asked for instead
