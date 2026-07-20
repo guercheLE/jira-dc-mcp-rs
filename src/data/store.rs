@@ -102,10 +102,11 @@ pub fn resolve_store_path(api_version: &str) -> Result<PathBuf> {
     // with "no such table: endpoints". `rename` within the same
     // directory is atomic on both POSIX and Windows with respect to
     // content — a reader always sees either the complete previous copy
-    // or the complete new one, never a partial write — even though, as
-    // noted above, Windows can still refuse the rename outright if
-    // something in *this* process already has the destination open;
-    // the per-`api_version` cache above is what actually prevents that.
+    // or the complete new one, never a partial write. The per-`api_version`
+    // cache above prevents *this* process from ever racing itself, but a
+    // genuinely different OS process can still have `path` open at the
+    // exact moment of the rename below — see the retry loop there for why
+    // that's handled with a backoff instead of a lock.
     //
     // `bytes` is the zstd-compressed `.db.zst` payload (see
     // `VERSION_STORE_BYTES`), not a valid SQLite file itself — it must be
@@ -125,12 +126,33 @@ pub fn resolve_store_path(api_version: &str) -> Result<PathBuf> {
             tmp_path.display()
         )
     })?;
-    std::fs::rename(&tmp_path, &path).with_context(|| {
-        format!(
-            "failed to move extracted store data into place at '{}'",
-            path.display()
-        )
-    })?;
+    // The per-`api_version` cache above only prevents *this* process from
+    // racing itself; it can't stop a genuinely different OS process (a
+    // concurrently-starting second server instance, a `populate_embeddings`
+    // run) from having `path` open via `open_store` at the exact moment
+    // this rename happens. On Windows that can make the rename itself fail
+    // outright rather than just being non-atomic, unlike POSIX — but the
+    // other process's use of the file is always brief (open, backup into
+    // memory or write, close), so a few retries with a short backoff
+    // resolve it without needing any cross-process locking.
+    let mut rename_attempts = 0u32;
+    loop {
+        match std::fs::rename(&tmp_path, &path) {
+            Ok(()) => break,
+            Err(_) if rename_attempts < 5 => {
+                rename_attempts += 1;
+                std::thread::sleep(Duration::from_millis(50 * u64::from(rename_attempts)));
+            }
+            Err(err) => {
+                return Err(err).with_context(|| {
+                    format!(
+                        "failed to move extracted store data into place at '{}'",
+                        path.display()
+                    )
+                });
+            }
+        }
+    }
 
     extracted.insert(api_version.to_string(), path.clone());
     Ok(path)
