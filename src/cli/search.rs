@@ -17,7 +17,7 @@ pub async fn run(
     let config = load_config(serde_json::Map::new())?;
     let conn = cached_store_connection(&config.api_version)?
         .lock()
-        .unwrap();
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
 
     for _ in 0..profile_warmups {
         search_operations(&conn, query, limit)?;

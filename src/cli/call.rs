@@ -14,7 +14,7 @@ pub async fn run(operation_id: &str, args_json: &str) -> anyhow::Result<()> {
     let endpoint = {
         let conn = cached_store_connection(&config.api_version)?
             .lock()
-            .unwrap();
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         get_endpoint(&conn, operation_id)?
             .ok_or_else(|| McpifyError::NotFound(format!("unknown operationId '{operation_id}'")))?
     };

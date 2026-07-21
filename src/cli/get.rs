@@ -8,7 +8,7 @@ pub async fn run(operation_id: &str) -> anyhow::Result<()> {
     let config = load_config(serde_json::Map::new())?;
     let conn = cached_store_connection(&config.api_version)?
         .lock()
-        .unwrap();
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     let result = get_operation(&conn, operation_id)?;
     println!("{}", serde_json::to_string_pretty(&result)?);
     Ok(())

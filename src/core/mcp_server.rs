@@ -103,7 +103,9 @@ impl McpifyServer {
     ) -> Result<CallToolResult, McpError> {
         let api_version = self.api_version.clone();
         self.run_tool("search", async move {
-            let conn = cached_store_connection(&api_version)?.lock().unwrap();
+            let conn = cached_store_connection(&api_version)?
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
             search_operations(&conn, &args.query, args.limit)
         })
         .await
@@ -115,7 +117,9 @@ impl McpifyServer {
     async fn get(&self, Parameters(args): Parameters<GetArgs>) -> Result<CallToolResult, McpError> {
         let api_version = self.api_version.clone();
         self.run_tool("get", async move {
-            let conn = cached_store_connection(&api_version)?.lock().unwrap();
+            let conn = cached_store_connection(&api_version)?
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
             get_operation(&conn, &args.operation_id)
         })
         .await
@@ -154,7 +158,9 @@ impl McpifyServer {
             // `&Connection`/`MutexGuard<Connection>` held across an await
             // point would make this future non-`Send`.
             let endpoint = {
-                let conn = cached_store_connection(&api_version)?.lock().unwrap();
+                let conn = cached_store_connection(&api_version)?
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner);
                 get_endpoint(&conn, &args.operation_id)?.ok_or_else(|| {
                     McpifyError::NotFound(format!("unknown operationId '{}'", args.operation_id))
                 })?
@@ -295,7 +301,9 @@ mod tests {
 
         let operation_id = {
             let conn = cached_store_connection("11.3").unwrap();
-            let conn = conn.lock().unwrap();
+            let conn = conn
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
             list_endpoints(&conn).unwrap()[0].operation_id.clone()
         };
         let get = server
@@ -336,8 +344,25 @@ mod tests {
         assert!(info.instructions.unwrap().contains("search, get, call"));
     }
 
+    // Wrapped in an overall timeout: a hang anywhere below (e.g. the
+    // in-process server task panicking mid-request, which leaves the
+    // client awaiting a response that will never arrive) would otherwise
+    // run until CI's own job-level timeout killed it, hours later.
+    // Failing fast here instead turns that into a normal, fast test
+    // failure.
     #[tokio::test]
     async fn mcp_protocol_routes_search_get_and_call_requests() {
+        tokio::time::timeout(
+            std::time::Duration::from_secs(30),
+            mcp_protocol_routes_search_get_and_call_requests_inner(),
+        )
+        .await
+        .expect(
+            "mcp protocol test timed out after 30s — the server task likely panicked mid-request",
+        );
+    }
+
+    async fn mcp_protocol_routes_search_get_and_call_requests_inner() {
         let (server_transport, client_transport) = tokio::io::duplex(64 * 1024);
         let server_task = tokio::spawn(async move {
             server().serve(server_transport).await?.waiting().await?;
@@ -368,7 +393,9 @@ mod tests {
 
         let operation_id = {
             let conn = cached_store_connection("11.3").unwrap();
-            let conn = conn.lock().unwrap();
+            let conn = conn
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
             list_endpoints(&conn).unwrap()[0].operation_id.clone()
         };
         let get = client
