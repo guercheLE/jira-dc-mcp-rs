@@ -8,6 +8,9 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    # A hung test would otherwise fall back to GitHub's own 6-hour job
+    # ceiling — this job normally finishes in well under 20 minutes.
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
