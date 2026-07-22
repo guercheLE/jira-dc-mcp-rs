@@ -52,3 +52,71 @@ pub async fn call_operation(
     }
     Ok(response)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::core::config_schema::AuthMethod;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    use tokio::net::TcpListener;
+
+    #[tokio::test]
+    async fn call_operation_executes_against_test_server() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+
+        let handle = tokio::spawn(async move {
+            if let Ok((mut stream, _)) = listener.accept().await {
+                let mut buf = [0u8; 1024];
+                let _ = stream.read(&mut buf).await;
+                let body = r#"{"status":"ok"}"#;
+                let response = format!(
+                    "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                    body.len(),
+                    body
+                );
+                let _ = stream.write_all(response.as_bytes()).await;
+            }
+        });
+
+        let endpoint = EndpointRecord {
+            operation_id: "testOp".to_string(),
+            path: "/test".to_string(),
+            method: "GET".to_string(),
+            summary: None,
+            description: None,
+            input_schema: serde_json::json!({}),
+            output_schema: serde_json::json!({}),
+            auth_scheme_ref: None,
+        };
+
+        let config: Config = serde_json::from_value(serde_json::json!({
+            "url": format!("http://{address}"),
+            "auth_method": "basic",
+            "timeout_ms": 1000
+        }))
+        .unwrap();
+
+        let mut auth_manager = AuthManager::new(AuthMethod::Basic);
+        auth_manager.set_credentials(crate::auth::auth_strategy::Credentials::from([(
+            "authorization_header".to_string(),
+            "Basic test".to_string(),
+        )]));
+
+        let res = call_operation(
+            &endpoint,
+            &config,
+            &mut auth_manager,
+            "testOp",
+            serde_json::json!({}),
+            None,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(res["status"], "ok");
+        handle.await.unwrap();
+    }
+}
+
+

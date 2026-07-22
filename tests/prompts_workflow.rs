@@ -147,6 +147,25 @@ async fn prompts_list_and_get_round_trip_over_the_mcp_protocol() {
     assert!(issues_text.contains("- summary"));
     assert!(issues_text.contains("- issue_key"));
 
+    for prompt_name in [
+        "jira-project-setup",
+        "jira-issue-collaboration",
+        "jira-search",
+        "jira-projects",
+        "jira-agile",
+        "jira-workflows-statuses",
+        "jira-issue-types-fields",
+        "jira-permissions-security",
+        "jira-users-groups",
+        "jira-admin-monitoring",
+    ] {
+        let prompt_res = client
+            .get_prompt(GetPromptRequestParams::new(prompt_name))
+            .await
+            .unwrap();
+        assert!(!prompt_text(&prompt_res).is_empty());
+    }
+
     drop(client);
     tokio::time::timeout(std::time::Duration::from_secs(2), server_task)
         .await
@@ -154,3 +173,4 @@ async fn prompts_list_and_get_round_trip_over_the_mcp_protocol() {
         .unwrap()
         .unwrap();
 }
+

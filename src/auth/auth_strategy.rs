@@ -26,3 +26,34 @@ pub trait AuthStrategy: Send + Sync {
 
     fn validate_credentials(&self, credentials: &Credentials) -> bool;
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    struct TestStrategy;
+
+    #[async_trait]
+    impl AuthStrategy for TestStrategy {
+        async fn authenticate(&self, _config: &AuthConfig) -> anyhow::Result<Credentials> {
+            Ok(Credentials::new())
+        }
+
+        fn validate_credentials(&self, _credentials: &Credentials) -> bool {
+            true
+        }
+    }
+
+    #[tokio::test]
+    async fn default_refresh_token_bails() {
+        let strategy = TestStrategy;
+        let res = strategy.refresh_token(&Credentials::new()).await;
+        assert!(res.is_err());
+        assert!(
+            res.unwrap_err()
+                .to_string()
+                .contains("does not support token refresh")
+        );
+    }
+}
+

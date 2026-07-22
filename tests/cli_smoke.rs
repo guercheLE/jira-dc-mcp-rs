@@ -90,6 +90,17 @@ fn profiling_workload_controls_are_hidden_and_reject_zero_iterations() {
     let invalid = generated_server(&["search", "test query", "--profile-iterations", "0"]);
     assert!(!invalid.status.success());
     assert!(stderr(&invalid).contains("--profile-iterations must be at least 1"));
+
+    let profile_run = generated_server(&[
+        "search",
+        "test query",
+        "--profile-warmups",
+        "1",
+        "--profile-iterations",
+        "2",
+    ]);
+    assert!(profile_run.status.success(), "{}", stderr(&profile_run));
+    assert!(stderr(&profile_run).contains("1 warmup(s), 2 measured iteration(s)"));
 }
 
 #[cfg(feature = "profiling")]

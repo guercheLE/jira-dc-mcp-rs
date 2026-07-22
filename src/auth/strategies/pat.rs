@@ -51,4 +51,19 @@ mod tests {
         let strategy = PatAuthStrategy;
         assert!(strategy.authenticate(&AuthConfig::new()).await.is_err());
     }
+
+    #[test]
+    fn validates_credentials_properly() {
+        let strategy = PatAuthStrategy;
+        let mut valid = Credentials::new();
+        valid.insert("token".to_string(), "my-token".to_string());
+        assert!(strategy.validate_credentials(&valid));
+
+        let mut empty = Credentials::new();
+        empty.insert("token".to_string(), "".to_string());
+        assert!(!strategy.validate_credentials(&empty));
+
+        assert!(!strategy.validate_credentials(&Credentials::new()));
+    }
 }
+

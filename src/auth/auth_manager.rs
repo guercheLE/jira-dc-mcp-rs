@@ -360,4 +360,90 @@ mod tests {
             Some("Bearer preformatted")
         );
     }
+
+    #[test]
+    fn header_location_returns_expected_headers() {
+        assert_eq!(
+            header_location_for(AuthMethod::Basic),
+            ("header", "Authorization")
+        );
+        assert_eq!(
+            header_location_for(AuthMethod::Pat),
+            ("header", "Authorization")
+        );
+    }
+
+    #[tokio::test]
+    async fn login_authenticates_and_saves_credentials() {
+        let mut manager = AuthManager::new(AuthMethod::Pat);
+        let mut config = AuthConfig::new();
+        config.insert("token".to_string(), "test-token-login".to_string());
+        let creds = manager.login(&config).await.unwrap();
+        assert_eq!(
+            creds.get("token").map(String::as_str),
+            Some("test-token-login")
+        );
+    }
+
+    #[tokio::test]
+    async fn apply_auth_headers_with_api_key() {
+        let mut manager = AuthManager::new(AuthMethod::Pat);
+        let mut creds = Credentials::new();
+        creds.insert("token".to_string(), "t123".to_string());
+        creds.insert("api_key".to_string(), "secret-api-key".to_string());
+        manager.set_credentials(creds);
+
+        let headers = manager
+            .apply_auth_headers(
+                std::collections::HashMap::new(),
+                "GET",
+                "https://example.com",
+                Transport::Stdio,
+                None,
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(
+            headers.get("X-Api-Key").map(String::as_str),
+            Some("secret-api-key")
+        );
+    }
+
+    #[tokio::test]
+    async fn credentials_from_env_pat_and_basic() {
+        unsafe {
+            std::env::set_var("JIRA_DC_MCP_TOKEN", "pat-from-env");
+        }
+        let mut manager = AuthManager::new(AuthMethod::Pat);
+        let creds = manager.credentials().await.unwrap();
+        assert_eq!(
+            creds.get("token").map(String::as_str),
+            Some("pat-from-env")
+        );
+        unsafe {
+            std::env::remove_var("JIRA_DC_MCP_TOKEN");
+        }
+
+        unsafe {
+            std::env::set_var("JIRA_DC_MCP_USERNAME", "user-env");
+            std::env::set_var("JIRA_DC_MCP_PASSWORD", "pass-env");
+        }
+        let mut basic_manager = AuthManager::new(AuthMethod::Basic);
+        let basic_creds = basic_manager.credentials().await.unwrap();
+        assert_eq!(
+            basic_creds.get("username").map(String::as_str),
+            Some("user-env")
+        );
+        assert_eq!(
+            basic_creds.get("password").map(String::as_str),
+            Some("pass-env")
+        );
+        unsafe {
+            std::env::remove_var("JIRA_DC_MCP_USERNAME");
+            std::env::remove_var("JIRA_DC_MCP_PASSWORD");
+        }
+    }
 }
+
+
