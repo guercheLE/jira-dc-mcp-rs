@@ -261,7 +261,14 @@ fn http_command_serves_health_and_shuts_down_cleanly() {
             stream
                 .write_all(b"GET /healthz HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n")
                 .unwrap();
-            stream.read_to_string(&mut response).unwrap();
+            if let Err(err) = stream.read_to_string(&mut response)
+                && !matches!(
+                    err.kind(),
+                    std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut
+                )
+            {
+                panic!("failed to read HTTP health response: {err}");
+            }
             if response.contains(" 200 OK") {
                 break;
             }
