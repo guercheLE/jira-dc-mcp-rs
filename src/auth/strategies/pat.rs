@@ -66,4 +66,3 @@ mod tests {
         assert!(!strategy.validate_credentials(&Credentials::new()));
     }
 }
-

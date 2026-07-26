@@ -173,4 +173,3 @@ async fn prompts_list_and_get_round_trip_over_the_mcp_protocol() {
         .unwrap()
         .unwrap();
 }
-

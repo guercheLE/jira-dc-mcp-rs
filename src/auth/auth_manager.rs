@@ -417,10 +417,7 @@ mod tests {
         }
         let mut manager = AuthManager::new(AuthMethod::Pat);
         let creds = manager.credentials().await.unwrap();
-        assert_eq!(
-            creds.get("token").map(String::as_str),
-            Some("pat-from-env")
-        );
+        assert_eq!(creds.get("token").map(String::as_str), Some("pat-from-env"));
         unsafe {
             std::env::remove_var("JIRA_DC_MCP_TOKEN");
         }
@@ -445,5 +442,3 @@ mod tests {
         }
     }
 }
-
-
