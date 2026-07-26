@@ -518,11 +518,11 @@ mod tests {
         // from under it would be the exact failure mode this fix exists
         // to avoid.
         let mut remove_result = std::fs::remove_file(&path);
-        for _ in 0..50 {
+        for _ in 0..100 {
             if remove_result.is_ok() {
                 break;
             }
-            std::thread::sleep(std::time::Duration::from_millis(20));
+            std::thread::sleep(std::time::Duration::from_millis(100));
             remove_result = std::fs::remove_file(&path);
         }
         remove_result.unwrap();

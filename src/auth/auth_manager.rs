@@ -375,6 +375,13 @@ mod tests {
 
     #[tokio::test]
     async fn login_authenticates_and_saves_credentials() {
+        // `login` falls back to real file-based credential storage under
+        // the ambient `HOME` when the OS keychain is unavailable (headless
+        // CI) -- serialize against credential_storage's own HOME-mutating
+        // test so the two can't race on the same process-wide env var.
+        let _guard = crate::core::credential_storage::HOME_ENV_TEST_LOCK
+            .lock()
+            .await;
         let mut manager = AuthManager::new(AuthMethod::Pat);
         let mut config = AuthConfig::new();
         config.insert("token".to_string(), "test-token-login".to_string());

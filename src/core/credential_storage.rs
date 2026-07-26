@@ -163,6 +163,18 @@ pub fn delete_credential(account: &str) -> anyhow::Result<()> {
     }
 }
 
+/// Serializes any test that sets the real `HOME`/`USERPROFILE` env var, or
+/// otherwise depends on the *ambient* one (e.g. by calling
+/// `save_credential`/`load_credential` without going through
+/// `AuthManager::set_credentials`). `std::env::set_var` mutates process-wide
+/// state that every test thread shares, and Rust's default test runner
+/// executes `#[test]` functions concurrently within one process -- without
+/// this lock, one test's `HOME` override (and its tempdir, torn down when
+/// that test returns) can be read mid-flight by an unrelated test running on
+/// another thread at the same time.
+#[cfg(test)]
+pub(crate) static HOME_ENV_TEST_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -184,8 +196,10 @@ mod tests {
         // `save_credential`/`load_credential`, since the OS keychain (the
         // primary path) may or may not be available in the test
         // environment and this test should be deterministic either way.
+        let _guard = HOME_ENV_TEST_LOCK.blocking_lock();
         let dir = tempfile::tempdir().unwrap();
-        // SAFETY: test-only env mutation, single-threaded within this test.
+        // SAFETY: test-only env mutation, serialized against every other
+        // HOME_ENV_TEST_LOCK holder by the guard above.
         unsafe {
             std::env::set_var("HOME", dir.path());
         }
