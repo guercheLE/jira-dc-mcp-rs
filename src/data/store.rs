@@ -517,7 +517,15 @@ mod tests {
         // If the disk connection were still open, removing the file out
         // from under it would be the exact failure mode this fix exists
         // to avoid.
-        std::fs::remove_file(&path).unwrap();
+        let mut remove_result = std::fs::remove_file(&path);
+        for _ in 0..50 {
+            if remove_result.is_ok() {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(20));
+            remove_result = std::fs::remove_file(&path);
+        }
+        remove_result.unwrap();
 
         let endpoint = get_endpoint(&cached.lock().unwrap(), "listWidgets")
             .unwrap()
