@@ -2,11 +2,17 @@
 
 use std::io::IsTerminal;
 
+use super::logger::logs_to_stdout;
+
 /// Pretty-printed to an interactive TTY, structured JSON otherwise
 /// (containers/CI) — mirrors `targets::typescript`'s `log-transport.ts`
-/// TTY-detection logic. Checks stderr, not stdout: that's where logs are
-/// actually written (see `logger::init_logging`), since stdout is reserved
-/// for the MCP stdio transport's JSON-RPC frames.
+/// TTY-detection logic. Checks whichever stream logs actually land on (see
+/// `logger::init_logging`): stderr in stdio mode, since stdout is reserved
+/// for the MCP stdio transport's JSON-RPC frames, or stdout in HTTP mode.
 pub fn use_pretty_output() -> bool {
-    std::io::stderr().is_terminal()
+    if logs_to_stdout() {
+        std::io::stdout().is_terminal()
+    } else {
+        std::io::stderr().is_terminal()
+    }
 }
